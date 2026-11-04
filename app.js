@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.3";
+const APP_VERSION = "0.4.4";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -31,6 +31,12 @@ const ROLES = ["Баг ахлагч", "Малын эмч", "Судлаач", "Б
 const SEX = ["Эр", "Эм"];
 const DART_N = ["1", "2", "3+"], DART_SITE = ["Гуя", "Хаа", "Хүзүү", "Бусад"], LIE = ["Хэвлийгээр", "Хажуугаар"];
 const REPRO = ["Хээлтэй", "Хөхүүл", "Хээлгүй / хөхүүлгүй", "Тодорхойгүй"];
+const HABITAT = ["Говь цөл", "Цөлөрхөг хээр", "Хээр", "Хайрган тал", "Уулын бэл", "Заг, бут"];
+const WEATHER = ["Цэлмэг", "Үүлшсэн", "Салхитай", "Хүчтэй салхи", "Цас", "Шуурга"];
+const BEHAV = ["Тайван", "Түгшүүртэй", "Түрэмгий", "Сүрэгтэй", "Ганцаараа"];
+const VETNOTE = ["Хэвийн", "Халуурсан", "Амьсгал удаашралтай", "Чичирсэн"];
+const ENDNOTE = ["Хэвийн суллагдсан", "Удаан сэргэсэн", "Доголон", "Сүрэгтээ нийлсэн"];
+const AGES = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
 const RECOVERY = ["Сайн", "Дунд", "Муу"];
@@ -534,6 +540,9 @@ const go = h => { location.hash = h; };
 function useRoute() { const [h, setH] = useState(location.hash || "#/"); useEffect(() => { const f = () => { setH(location.hash || "#/"); scrollTo(0, 0); }; addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []); return h.slice(1).split("/").filter(Boolean); }
 function useTick(on = true, ms = 1000) { const [, f] = useState(0); useEffect(() => { if (!on) return; const t = setInterval(() => f(x => x + 1), ms); return () => clearInterval(t); }, [on, ms]); }
 const Chips = ({ opts, val, on, cls = "" }) => html`<div class="chips">${opts.map(o => html`<button type="button" class=${"chip " + cls + (val === o ? " on" : "")} onClick=${() => on(val === o ? "" : o)}>${o}</button>`)}</div>`;
+// Товч дарахад үг текстэд нэмэгдэнэ/хасагдана, текстийг гараар ч засаж болно
+const QuickText = ({ val, on, opts, ph, area }) => { const parts = (val || "").split(",").map(t => t.trim()).filter(Boolean); const tog = o => on((parts.includes(o) ? parts.filter(p => p !== o) : [...parts, o]).join(", "));
+  return html`<div class="chips mb">${opts.map(o => html`<button type="button" class=${"chip" + (parts.includes(o) ? " on" : "")} onClick=${() => tog(o)}>${o}</button>`)}</div><${TextIn} val=${val} on=${on} ph=${ph || "эсвэл өөрөө бичнэ"} area=${area} />`; };
 const Field = ({ label, children, hint, miss }) => html`<div class=${"field" + (miss ? " miss" : "")}><label class="lbl">${label}${miss ? html`<span class="dutuu">дутуу</span>` : null}</label>${children}${hint && html`<div class="hint">${hint}</div>`}</div>`;
 const TopBar = ({ title, sub, back, right }) => html`<div class="topbar">${back ? html`<button class="iconbtn" aria-label="Буцах" onClick=${() => go(back)}>‹</button>` : html`<img class="logo-sm" src="logo-small.png" alt="BRCC" />`}<div class="grow"><div class="tt">${title}</div>${sub && html`<div class="ts">${sub}</div>`}</div>${right}</div>`;
 function Modal({ title, onClose, children }) { return html`<div class="modal-bg" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}><div class="modal"><div class="row between mb"><h2>${title}</h2><button class="iconbtn" onClick=${onClose}>✕</button></div>${children}</div></div>`; }
@@ -730,12 +739,10 @@ function PlaceCard({ x }) {
       <${Field} label="Аймаг" miss=${isMiss(x, "аймаг")}><${SearchPick} val=${x.aimag} opts=${typeof AIMAGS !== "undefined" ? AIMAGS : []} on=${v => updInd(x.id, y => { if (y.aimag !== v) y.soum = ""; y.aimag = v; })} ph="Өм…" /><//>
       <${Field} label="Сум" miss=${isMiss(x, "сум")}><${SearchPick} val=${x.soum} opts=${soums.length ? soums : Object.values(typeof ADMIN !== "undefined" ? ADMIN : {}).flat()} on=${v => updInd(x.id, y => { y.soum = v; if (!y.aimag && typeof ADMIN !== "undefined") { const a = Object.keys(ADMIN).find(k => ADMIN[k].includes(v)); if (a) y.aimag = a; } })} ph="Бичиж хайх…" /><//>
     </div>
-    <${Field} label="Газрын нэр" miss=${isMiss(x, "газрын нэр")} hint="Дараагийн бодгальд автоматаар хуулагдана"><${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
-    <${Field} label="Амьдрах орчин"><${TextIn} val=${x.habitat} on=${v => u("habitat", v)} ph="ж: хялгана-хиаглаг тал" /><//>
-    <div class="grid2">
-      <${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v)} type="text" mode="decimal" /><//>
-      <${Field} label="Цаг агаар"><${TextIn} val=${x.weather} on=${v => u("weather", v)} ph="салхи, үүл" /><//>
-    </div>
+    <${Field} label="Газрын нэр" miss=${isMiss(x, "газрын нэр")} hint="Дараагийн бодгальд автоматаар хуулагдана">${(() => { const ps = [...new Set(indsOf(x.surveyId).map(i => i.place).filter(Boolean))].filter(p => p !== x.place).slice(-6); return ps.length ? html`<div class="chips mb">${ps.map(p => html`<button type="button" class="chip" onClick=${() => u("place", p)}>${p}</button>`)}</div>` : null; })()}<${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
+    <${Field} label="Амьдрах орчин"><${QuickText} val=${x.habitat} on=${v => u("habitat", v)} opts=${HABITAT} /><//>
+    <div class="grid2"><${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v)} type="text" mode="decimal" /><//><div></div></div>
+    <${Field} label="Цаг агаар"><${QuickText} val=${x.weather} on=${v => u("weather", v)} opts=${WEATHER} /><//>
     ${bad && html`<div class="panel warn">⚠ Агаарын хэм ${setting("tempMin")}–${setting("tempMax")} °C-ээс гадуур байна. Барилт хийхгүй (CPORT, JHA).</div>`}
   </div>`;
 }
@@ -787,7 +794,7 @@ function VetPanel({ x }) {
       <div class="grid2 mt"><input class="inp" inputmode="decimal" placeholder="Биеийн хэм °C" value=${vt.temp} onInput=${e => setVt({ ...vt, temp: e.target.value })} />
         <select class="inp" value=${vt.mucous} onChange=${e => setVt({ ...vt, mucous: e.target.value })}><option value="">Салст бүрхүүл</option>${MUCOUS.map(o => html`<option value=${o}>${o}</option>`)}</select></div>
       <button class="btn sec sm mt" onClick=${addVit}>+ Үзүүлэлт нэмэх</button><//>
-    <${Field} label="Эмчийн тэмдэглэл"><${TextIn} val=${v.notes} on=${val => uv("notes", val)} area=${true} /><//>
+    <${Field} label="Эмчийн тэмдэглэл"><${QuickText} val=${v.notes} on=${val => uv("notes", val)} opts=${VETNOTE} area=${true} /><//>
     <div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
       <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>
     ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй. Доорх «Сэргээх тариа хийлээ» товчоор үргэлжлүүлнэ.</div>`}
@@ -813,10 +820,10 @@ function CollarPanel({ x, compact }) {
           ${matches.length ? html`<div class="chips mt">${matches.slice(0, 8).map(c => html`<button class="chip" onClick=${() => pick(c)}>${c.id}${used.has(c.id) ? " (ашигласан)" : ""}</button>`)}</div>` : q.length >= 3 ? html`<div class="hint">Жагсаалтад алга</div>` : null}`}<//>
     <${Field} label="Хүзүүвчний зураг" miss=${isMiss(x, "хүзүүвчний зураг")}><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /><//>
     <${Field} label="Хүйс" miss=${isMiss(x, "хүйс")}><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
-    <${Field} label="Нас (жил)" miss=${isMiss(x, "нас")}><input class="inp" inputmode="decimal" placeholder="ж: 4" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
+    <${Field} label="Нас (жил)" miss=${isMiss(x, "нас")}><div class="chips mb">${AGES.map(a => html`<button type="button" class=${"chip" + (String(x.age) === a ? " on" : "")} onClick=${() => u("age", String(x.age) === a ? "" : a)}>${a === "8" ? "8+" : a}</button>`)}</div><input class="inp" inputmode="decimal" placeholder="эсвэл бичнэ (ж: 4.5)" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
     ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<label class="check"><input type="checkbox" checked=${!!x.growth} onChange=${e => u("growth", e.target.checked)} /> Өсөлтийг тооцсон</label><div class="hint" style="margin:-6px 0 12px">Залуу хуланд хүзүүвчийг өсөлтийн зайтай зүүнэ (удирдамж 6.5)</div>`}
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
-    <${Field} label="Онцлох зан төрх"><${TextIn} val=${x.behaviour} on=${val => u("behaviour", val)} /><//>
+    <${Field} label="Онцлох зан төрх"><${QuickText} val=${x.behaviour} on=${val => u("behaviour", val)} opts=${BEHAV} /><//>
     <label class="check"><input type="checkbox" checked=${!!x.trd} onChange=${e => u("trd", e.target.checked)} /> TRD соронз авсан</label>
     <label class="check"><input type="checkbox" checked=${!!x.fit2} onChange=${e => u("fit2", e.target.checked)} /> Хоёр хуруу багтана (хүзүүвчний чангалаг)</label>
     <label class="check"><input type="checkbox" checked=${!!x.eyes} onChange=${e => u("eyes", e.target.checked)} /> Нүд боосон, чих бөглөсөн</label>
@@ -834,7 +841,7 @@ function FinishPanel({ x }) {
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
   return html`<div class="card"><h3 class="mb">${x.chaseAborted ? "Хөөлт зогсоосон" : "Сэргэлт, суллалт"}</h3>
     ${!x.chaseAborted && html`<${Field} label="Сэргэлт" miss=${isMiss(x, "сэргэлт")}><${Chips} opts=${RECOVERY} val=${x.recovery} on=${val => u("recovery", val)} cls=${x.recovery === "Муу" ? "badc" : "okc"} /><//>`}
-    <${Field} label="Тэмдэглэл"><${TextIn} val=${x.notes} on=${val => u("notes", val)} area=${true} /><//>
+    <${Field} label="Тэмдэглэл"><${QuickText} val=${x.notes} on=${val => u("notes", val)} opts=${ENDNOTE} area=${true} /><//>
     <div class="hint">Бодгаль хаагдлаа. Засах бол талбаруудыг шууд өөрчилнө, эсвэл «↶ Буцаах».</div>
   </div>`;
 }
