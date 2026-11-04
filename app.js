@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.6";
+const APP_VERSION = "0.4.7";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -36,7 +36,7 @@ const WEATHER = ["Цэлмэг", "Үүлшсэн", "Салхитай", "Хүчт
 const BEHAV = ["Тайван", "Түгшүүртэй", "Түрэмгий", "Сүрэгтэй", "Ганцаараа"];
 const VETNOTE = ["Хэвийн", "Халуурсан", "Амьсгал удаашралтай", "Чичирсэн"];
 const ENDNOTE = ["Хэвийн суллагдсан", "Удаан сэргэсэн", "Доголон", "Сүрэгтээ нийлсэн"];
-const AGES = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const AGES = ["1", "2", "3", "4", "5", "6", "7", "8+"];
 const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
 const RECOVERY = ["Сайн", "Дунд", "Муу"];
@@ -76,6 +76,9 @@ async function loadAll() {
   const lim = Date.now() - 30 * 864e5;
   for (const [id, x] of Object.entries(S.inds)) if (x.deletedAt && x.deletedAt < lim) { (x.photos || []).forEach(p => DB.del("photo:" + p.id)); delete S.inds[id]; }
   for (const [id, x] of Object.entries(S.surveys)) if (x.deletedAt && x.deletedAt < lim) delete S.surveys[id];
+  // v0.4.6 хүртэл зургийн дараалал "collar"/"animal" төрөлтэй хадгалагдаж, илгээгдэлгүй хаягддаг байсан
+  S.queue = (S.queue || []).map(q => q.kind === "collar" || q.kind === "animal" ? { ...q, kind: "photo", pkind: q.kind } : q);
+  for (const x of Object.values(S.inds)) for (const p of x.photos || []) if (!x.deletedAt && !S.queue.some(q => q.kind === "photo" && q.id === p.id) && !(S.settings.sentPhotos || {})[p.id]) S.queue.push({ kind: "photo", id: p.id, indId: x.id, pkind: p.kind, at: Date.now() });
   // v0.1 → v0.2: «Буудсаны дараах хяналт», «Хяналт эхэллээ» алхам хасагдаж, «Сэргээх тариа» нэмэгдсэн
   for (const x of Object.values(S.inds)) { if (x.steps.monStart && !x.steps.antidote) x.steps.antidote = x.steps.monStart; delete x.steps.monStart; delete x.steps.postDart; }
   S.ready = true; document.body.classList.toggle("night", !!S.settings.night); document.body.classList.toggle("big", !!S.settings.big); emit();
@@ -282,14 +285,14 @@ async function addPhoto(id, kind, file) {
   const data = await resizeImage(file); const pid = uid();
   await DB.set("photo:" + pid, data);
   updInd(id, x => { x.photos = [...(x.photos || []), { id: pid, kind, t: Date.now() }]; });
-  enqueue("photo", pid, { indId: id, kind });
+  enqueue("photo", pid, { indId: id, pkind: kind });
 }
 const photoKind = p => p.kind === "collar" ? "huzuuvch" : "bodgal";
 function photoName(x, p) { const same = (x.photos || []).filter(q => photoKind(q) === photoKind(p)); return `${fileLabel(x)}_${photoKind(p)}_${same.findIndex(q => q.id === p.id) + 1}.jpg`; }
 function PhotoThumb({ pid }) { const [src, setSrc] = useState(undefined); useEffect(() => { DB.get("photo:" + pid).then(v => setSrc(v || null)); }, [pid]); return src ? html`<img src=${src} alt="" />` : html`<div class="nophoto">${src === null ? "өөр утсанд" : "…"}</div>`; }
 
 /* ---------- Google Sheet руу илгээх ---------- */
-function enqueue(kind, id, extra) { S.queue = S.queue.filter(q => !(q.kind === kind && q.id === id)).concat([{ kind, id, at: Date.now(), ...(extra || {}) }]); persist("queue"); clearTimeout(enqueue.t); enqueue.t = setTimeout(flushQueue, 1500); }
+function enqueue(kind, id, extra) { S.queue = S.queue.filter(q => !(q.kind === kind && q.id === id)).concat([{ ...(extra || {}), kind, id, at: Date.now() }]); persist("queue"); clearTimeout(enqueue.t); enqueue.t = setTimeout(flushQueue, 1500); }
 function surveyRow(s) { return { id: s.id, "Судалгаа": s.name, "Зүйл": s.species, "Баг": (s.team || []).map(m => `${m.name} (${m.role})`).join("; "), "Бүртгэгч": s.recorder || "", "Үүсгэсэн": fmtDT(s.createdAt), "Устгасан": s.deletedAt ? fmtDT(s.deletedAt) : "" }; }
 function indRow(x) {
   const s = S.surveys[x.surveyId] || {}, m = metrics(x), v = x.vet || {}, r = { id: x.id };
@@ -319,12 +322,13 @@ async function flushQueue() {
       if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) });
         // Амин үзүүлэлт, дээжийг тусдаа хуудсанд (бодгалийн id-аар дахин бичнэ)
         const bs = buildSheets([x]); for (const n of ["Амин үзүүлэлт", "Дээж"]) { const sh = bs.find(b => b.name === n); items.push({ kind: "rows", sheet: n, id: x.id, header: sh ? sh.rows[0] : [], rows: sh ? sh.rows.slice(1) : [] }); } }
-      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.kind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
+      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.pkind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
     }
     const body = JSON.stringify({ app: "collaring", items });
     try { await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body }); }
     catch (e) { throw e; }
     const sent = new Set(q.map(i => i.kind + "|" + i.id + "|" + i.at));
+    const ph = q.filter(i => i.kind === "photo"); if (ph.length) { S.settings.sentPhotos = { ...(S.settings.sentPhotos || {}) }; ph.forEach(i => { S.settings.sentPhotos[i.id] = 1; }); persist("settings"); }
     S.queue = S.queue.filter(i => !sent.has(i.kind + "|" + i.id + "|" + i.at)); persist("queue");
     S.lastSync = Date.now();
     if (S.queue.length) setTimeout(flushQueue, 800);
@@ -463,7 +467,11 @@ function mergeIncoming(d) {
   let lastId = null;
   for (const x of Object.values(d.inds || {})) {
     const y = { ...x, surveyId: map[x.surveyId] || x.surveyId }, cur = S.inds[x.id];
-    if (!cur) { S.inds[x.id] = y; ni++; lastId = x.id; enqueue("ind", x.id); }
+    if (!cur) {
+      // өөр утсанд ижил дугаартай бодгаль байвал дараагийн дугаарыг өгнө
+      const same = Object.values(S.inds).filter(z => z.surveyId === y.surveyId && z.id !== y.id);
+      if (same.some(z => z.no === y.no)) y.no = same.reduce((a, z) => Math.max(a, z.no || 0), 0) + 1;
+      S.inds[x.id] = y; ni++; lastId = x.id; enqueue("ind", x.id); }
     else if ((cur.updatedAt || 0) < (y.updatedAt || 0)) { S.inds[x.id] = y; nu++; lastId = x.id; enqueue("ind", x.id); }
   }
   // нэг хүзүүвч хоёр өөр бодгальд бүртгэгдсэн эсэх
@@ -626,7 +634,8 @@ function SurveyView({ id }) {
   const groups = {}; list.forEach(x => { const g = [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "Байршил оруулаагүй"; (groups[g] = groups[g] || []).push(x); });
   const newInd = () => {
     const prev = list[list.length - 1] || {}; const iid = uid();
-    S.inds[iid] = { id: iid, surveyId: id, no: list.length + 1, createdAt: Date.now(), updatedAt: Date.now(), steps: {}, side: {}, vet: { vitals: [] }, samples: [], photos: [], status: "open",
+    const no = Object.values(S.inds).filter(y => y.surveyId === id).reduce((a, y) => Math.max(a, y.no || 0), 0) + 1; // устгасан ч тооцно, дугаар давхардахгүй
+    S.inds[iid] = { id: iid, surveyId: id, no, createdAt: Date.now(), updatedAt: Date.now(), steps: {}, side: {}, vet: { vitals: [] }, samples: [], photos: [], status: "open",
       aimag: prev.aimag || "", soum: prev.soum || "", place: prev.place || "", habitat: prev.habitat || "", airTemp: prev.airTemp ?? "", weather: prev.weather || "" };
     persist("inds"); enqueue("ind", iid); emit(); go("#/i/" + iid);
   };
@@ -812,14 +821,14 @@ function VetPanel({ x }) {
 }
 
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
-const setPhotoNote = (x, pid, note) => { updInd(x.id, y => { const p = (y.photos || []).find(q => q.id === pid); if (p) p.note = note; }); enqueue("photo", pid, { indId: x.id, kind: ((x.photos || []).find(q => q.id === pid) || {}).kind }); };
+const setPhotoNote = (x, pid, note) => { updInd(x.id, y => { const p = (y.photos || []).find(q => q.id === pid); if (p) p.note = note; }); enqueue("photo", pid, { indId: x.id, pkind: ((x.photos || []).find(q => q.id === pid) || {}).kind }); };
 const Thumbs = ({ x, k }) => { const ps = (x.photos || []).filter(p => (p.kind || "animal") === k); return ps.length ? html`<div class="phlist mt">${ps.map(p => html`<div class="ph" key=${p.id}><${PhotoThumb} pid=${p.id} /><div class="grow"><div class="phname">${photoName(x, p)}</div><${TextIn} val=${p.note} on=${val => setPhotoNote(x, p.id, val)} ph="Зургийн тэмдэглэл" /></div></div>`)}</div>` : null; };
 
 function CollarPanel({ x, compact }) {
   const [q, setQ] = useState(""); const used = usedCollars(x.id);
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
   const matches = q ? COLLARS.filter(c => c.id.endsWith(q) || c.id === q) : [];
-  const pick = c => { updInd(x.id, y => { y.collarId = c.id; y.imei = c.imei; }); setQ(""); if (used.has(c.id)) showToast("Анхаар: энэ хүзүүвч өөр бодгальд бүртгэлтэй байна"); };
+  const pick = c => { updInd(x.id, y => { y.collarId = c.id; y.imei = c.imei; const pre = `${y.no}-`; (y.samples || []).forEach(a => { if (a.code.startsWith(pre)) a.code = c.id.slice(-3) + "-" + a.code.slice(pre.length); }); }); setQ(""); if (used.has(c.id)) showToast("Анхаар: энэ хүзүүвч өөр бодгальд бүртгэлтэй байна"); };
   const short = x.collarId ? x.collarId.slice(-3) : String(x.no);
   const addSample = (code, l) => updInd(x.id, y => { const n = (y.samples || []).filter(a => a.type === code).length + 1; y.samples = [...(y.samples || []), { code: `${short}-${code}-${n}`, type: code, label: l, t: Date.now() }]; });
   const free = COLLARS.filter(c => !used.has(c.id));
@@ -830,7 +839,7 @@ function CollarPanel({ x, compact }) {
           ${matches.length ? html`<div class="chips mt">${matches.slice(0, 8).map(c => html`<button class="chip" onClick=${() => pick(c)}>${c.id}${used.has(c.id) ? " (ашигласан)" : ""}</button>`)}</div>` : q.length >= 3 ? html`<div class="hint">Жагсаалтад алга</div>` : null}`}<//>
     <${Field} label="Хүзүүвчний зураг" miss=${isMiss(x, "хүзүүвчний зураг")}><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /><//>
     <${Field} label="Хүйс" miss=${isMiss(x, "хүйс")}><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
-    <${Field} label="Нас (жил)" miss=${isMiss(x, "нас")}><div class="chips mb">${AGES.map(a => html`<button type="button" class=${"chip" + (String(x.age) === a ? " on" : "")} onClick=${() => u("age", String(x.age) === a ? "" : a)}>${a === "8" ? "8+" : a}</button>`)}</div><input class="inp" inputmode="decimal" placeholder="эсвэл бичнэ (ж: 4.5)" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
+    <${Field} label="Нас (жил)" miss=${isMiss(x, "нас")}><div class="chips mb">${AGES.map(a => html`<button type="button" class=${"chip" + (String(x.age) === a ? " on" : "")} onClick=${() => u("age", String(x.age) === a ? "" : a)}>${a}</button>`)}</div><input class="inp" inputmode="decimal" placeholder="эсвэл бичнэ (ж: 4.5)" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
     ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<label class="check"><input type="checkbox" checked=${!!x.growth} onChange=${e => u("growth", e.target.checked)} /> Өсөлтийг тооцсон</label><div class="hint" style="margin:-6px 0 12px">Залуу хуланд хүзүүвчийг өсөлтийн зайтай зүүнэ (удирдамж 6.5)</div>`}
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
     <${Field} label="Онцлох зан төрх"><${QuickText} val=${x.behaviour} on=${val => u("behaviour", val)} opts=${BEHAV} /><//>
@@ -857,13 +866,26 @@ function FinishPanel({ x }) {
 }
 
 /* ---------- Тохиргоо, хогийн сав ---------- */
+async function testSheet() {
+  showToast("Шалгаж байна…");
+  try { const r = await fetch(S.settings.sheetsUrl.trim()); const t = await r.text(); showToast(t.includes("BRCC Collaring") ? "✓ Google Sheet холбогдсон" : "Холбоос буруу байна (Apps Script биш)"); }
+  catch (e) { showToast(navigator.onLine ? "Холбогдсонгүй: холбоосоо шалгана уу" : "Сүлжээ алга"); }
+}
+function resendAll() {
+  if (!confirm("Бүх судалгаа, бодгаль, зургийг Sheet рүү дахин илгээх үү? (Давхардахгүй, шинэчилнэ)")) return;
+  for (const s of Object.values(S.surveys)) enqueue("survey", s.id);
+  for (const x of Object.values(S.inds)) { enqueue("ind", x.id); for (const p of x.photos || []) enqueue("photo", p.id, { indId: x.id, pkind: p.kind }); }
+  showToast(`Илгээх дараалалд ${S.queue.length} зүйл`);
+}
 function SettingsView() {
   useStore(); const st2 = S.settings; const u = (k, v) => { S.settings = { ...S.settings, [k]: v }; persist("settings"); if (k === "night") document.body.classList.toggle("night", !!v); if (k === "big") document.body.classList.toggle("big", !!v); emit(); };
   const numF = (k, l) => html`<${Field} label=${l}><input class="inp" inputmode="decimal" value=${st2[k] ?? DEFAULTS[k]} onInput=${e => u(k, e.target.value === "" ? DEFAULTS[k] : +e.target.value)} /><//>`;
   return html`<div class="page"><${TopBar} title="Тохиргоо" back="#/" />
     <div class="card"><h3 class="mb">Google Sheet</h3>
       <${Field} label="Apps Script холбоос" hint="README-ийн зааврын дагуу Google Sheet дээр apps-script.gs-ийг байршуулж авсан /exec холбоос"><${TextIn} val=${st2.sheetsUrl} on=${v => u("sheetsUrl", v.trim())} ph="https://script.google.com/macros/s/…/exec" /><//>
-      <div class="row between"><span class="muted small">Илгээгээгүй: ${S.queue.length}${S.lastSync ? ` · сүүлд ${fmtHM(S.lastSync)}` : ""}</span><button class="btn sec sm" disabled=${!st2.sheetsUrl || flushing} onClick=${flushQueue}>${flushing ? "Илгээж байна…" : "Одоо илгээх"}</button></div></div>
+      <div class="row between"><span class="muted small">Илгээгээгүй: ${S.queue.length}${S.lastSync ? ` · сүүлд ${fmtHM(S.lastSync)}` : ""}</span><button class="btn sec sm" disabled=${!st2.sheetsUrl || flushing} onClick=${flushQueue}>${flushing ? "Илгээж байна…" : "Одоо илгээх"}</button></div>
+      ${st2.sheetsUrl && !/\/exec$/.test(st2.sheetsUrl) ? html`<div class="panel warn mt">Холбоос «/exec»-ээр төгсөх ёстой.</div>` : null}
+      <div class="row wrap mt"><button class="btn ghost sm" disabled=${!st2.sheetsUrl} onClick=${testSheet}>🔌 Холболт шалгах</button><button class="btn ghost sm" disabled=${!st2.sheetsUrl} onClick=${resendAll}>↻ Бүгдийг дахин илгээх</button></div></div>
     <div class="card"><h3 class="mb">Хөөлтийн хязгаар (CPORT: 5 км эсвэл 10 мин)</h3>
       <div class="grid2">${numF("chaseWarnMin", "Анхааруулах (мин)")}${numF("chaseStopMin", "Зогсоох (мин)")}${numF("chaseWarnKm", "Анхааруулах (км)")}${numF("chaseStopKm", "Зогсоох (км)")}</div>
       <div class="grid2">${numF("handleMin", "Хүзүүвчлэх зорилт (мин)")}${numF("gpsMaxAcc", "GPS нарийвчлалын босго (м)")}</div>
