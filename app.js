@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.5";
+const APP_VERSION = "0.4.6";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -303,7 +303,7 @@ function indRow(x) {
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.inj === "Байхгүй" ? "байхгүй" : v.injuries || (v.inj === "Байгаа" ? "байгаа" : ""), "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
     "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "",
-    "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Шинэчилсэн": fmtDT(x.updatedAt) });
+    "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Дутуу": missing(x).join(", "), "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
 }
 let flushing = false;
@@ -316,7 +316,9 @@ async function flushQueue() {
     const items = [];
     for (const it of q) {
       if (it.kind === "survey" && S.surveys[it.id]) items.push({ kind: "survey", row: surveyRow(S.surveys[it.id]) });
-      if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) }); }
+      if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) });
+        // Амин үзүүлэлт, дээжийг тусдаа хуудсанд (бодгалийн id-аар дахин бичнэ)
+        const bs = buildSheets([x]); for (const n of ["Амин үзүүлэлт", "Дээж"]) { const sh = bs.find(b => b.name === n); items.push({ kind: "rows", sheet: n, id: x.id, header: sh ? sh.rows[0] : [], rows: sh ? sh.rows.slice(1) : [] }); } }
       if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.kind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
     }
     const body = JSON.stringify({ app: "collaring", items });
