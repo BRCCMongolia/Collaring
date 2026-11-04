@@ -359,6 +359,24 @@ const TextIn = ({ val, on, ph, area, type = "text", mode }) => area
   : html`<input class="inp" type=${type} inputmode=${mode} placeholder=${ph || ""} value=${val ?? ""} onInput=${e => on(e.target.value)} />`;
 
 /* ---------- Нүүр ---------- */
+const OWNER_TEXT = "BRCC Collaring апп нь Биологийн Нөөцийг Хамгаалах Төвийн өмч бөгөөд төвийн судлаачдын зэрлэг амьтан барих, хүзүүвчлэх ажлын өгөгдөл цуглуулахад зориулагдсан. Зөвшөөрөлгүй хувилах, тараах, бусад зорилгоор ашиглахыг хориглоно. © Биологийн Нөөцийг Хамгаалах Төв, 2026.";
+function Footer() {
+  const n = Object.values(S.surveys).filter(x => x.deletedAt).length + Object.values(S.inds).filter(x => x.deletedAt).length;
+  return html`<div class="foot"><div><a href="#/trash">Хогийн сав (${n})</a> · <a href="#/about">Тухай</a></div><p>${OWNER_TEXT}</p></div>`;
+}
+function AboutView() {
+  return html`<div class="page"><${TopBar} title="Тухай" back="#/" />
+    <img class="logo-lg" src="logo-small.png" alt="BRCC" />
+    <div class="hero"><h1>BRCC Collaring</h1><p>Зэрлэг амьтан барих, хүзүүвчлэх бүртгэл · v${APP_VERSION}</p></div>
+    <div class="card"><p style="margin:0">${OWNER_TEXT}</p></div>
+    <div class="card"><table class="kv"><tbody>
+      <tr><td>Хөөлтийн хязгаар</td><td>${setting("chaseStopKm")} км эсвэл ${setting("chaseStopMin")} мин (CPORT, хээрийн удирдамж, JHA)</td></tr>
+      <tr><td>Хүзүүвчлэх зорилт</td><td>${setting("handleMin")} мин</td></tr>
+      <tr><td>Хүзүүвч</td><td>Lotek LiteTrack Iridium 750+, ${COLLARS.length} ширхэг</td></tr>
+      <tr><td>Өгөгдөл</td><td>Утсанд хадгалагдаж, сүлжээтэй үед Google Sheet рүү илгээгдэнэ</td></tr>
+    </tbody></table></div>
+  </div>`;
+}
 function Home() {
   const [show, setShow] = useState(false); useStore();
   const list = liveSurveys();
@@ -371,6 +389,7 @@ function Home() {
     ${list.length ? list.map(s => { const n = indsOf(s.id); const c = n.filter(x => x.collarId && x.steps.collarEnd && !x.steps.collarEnd.skipped).length;
       return html`<button class="card link" onClick=${() => go("#/s/" + s.id)}><div class="ct">${s.name}<span class="tag">${s.species}</span></div><div class="cs">${n.length} бодгаль · ${c} хүзүүвчилсэн · ${fmtDate(s.createdAt)}</div></button>`; })
       : html`<div class="empty">Судалгаа алга. «+ Шинэ судалгаа» дарж эхлээрэй.</div>`}
+    <${Footer} />
     ${show && html`<${SurveyModal} onClose=${() => setShow(false)} />`}
   </div>`;
 }
@@ -637,7 +656,7 @@ function TrashView() {
   useStore();
   const items = [...Object.values(S.surveys).filter(s => s.deletedAt).map(s => ({ kind: "s", o: s, l: "Судалгаа: " + s.name })), ...Object.values(S.inds).filter(x => x.deletedAt).map(x => ({ kind: "i", o: x, l: `Бодгаль: ${label(x)} (${(S.surveys[x.surveyId] || {}).name || ""})` }))].sort((a, b) => b.o.deletedAt - a.o.deletedAt);
   const restore = it => it.kind === "s" ? updSurvey(it.o.id, s => { delete s.deletedAt; }) : updInd(it.o.id, x => { delete x.deletedAt; });
-  return html`<div class="page"><${TopBar} title="Хогийн сав" back="#/settings" />
+  return html`<div class="page"><${TopBar} title="Хогийн сав" back="#/" />
     <p class="hint">Устгасан зүйл 30 хоног хадгалагдаж, дараа нь бүрмөсөн устна.</p>
     ${items.length ? items.map(it => html`<div class="card row between"><div class="grow"><div>${it.l}</div><div class="cs">${fmtDT(it.o.deletedAt)}</div></div><button class="btn sec sm" onClick=${() => restore(it)}>Сэргээх</button></div>`) : html`<div class="empty">Хогийн сав хоосон</div>`}
   </div>`;
@@ -652,6 +671,7 @@ function App() {
   else if (r[0] === "i" && r[1]) v = html`<${IndView} id=${r[1]} />`;
   else if (r[0] === "settings") v = html`<${SettingsView} />`;
   else if (r[0] === "trash") v = html`<${TrashView} />`;
+  else if (r[0] === "about") v = html`<${AboutView} />`;
   else v = html`<${Home} />`;
   return html`<div class="app">${v}${S.toast && html`<div class="toast">${S.toast}</div>`}</div>`;
 }
