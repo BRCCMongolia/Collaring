@@ -51,7 +51,7 @@ function savePhoto(ss, it) {
   const dir = it.survey ? folder(root, it.survey) : root;
   const existing = dir.getFilesByName(it.name);
   const file = existing.hasNext() ? existing.next() : dir.createFile(Utilities.newBlob(Utilities.base64Decode(String(it.data).split(",")[1]), "image/jpeg", it.name));
-  upsert(ss, "Зураг", { id: it.id, "Бодгалийн id": it.ind, "Файл": it.name, "Холбоос": file.getUrl() });
+  upsert(ss, "Зураг", { id: it.id, "Бодгалийн id": it.ind, "Файл": it.name, "Тэмдэглэл": it.note || "", "Холбоос": file.getUrl() });
 }
 function folder(parent, name) { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
 
