@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.3.1";
+const APP_VERSION = "0.4.0";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -29,6 +29,7 @@ const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"],
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
+const DART_N = ["1", "2", "3+"], DART_SITE = ["Гуя / ташаа", "Мөр", "Бусад"], LIE = ["Хэвлийгээр", "Хажуугаар"];
 const REPRO = ["Хээлтэй", "Хөхүүл", "Хээлгүй / хөхүүлгүй", "Тодорхойгүй"];
 const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
@@ -101,7 +102,7 @@ function beep(times = 3, freq = 880) {
   try { if (!audioCtx) primeAudio(); if (audioCtx) for (let i = 0; i < times; i++) { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.frequency.value = freq; g.gain.value = 0.35; const t0 = audioCtx.currentTime + i * 0.45; o.start(t0); o.stop(t0 + 0.3); } } catch (e) { }
   if (navigator.vibrate) navigator.vibrate(Array.from({ length: times * 2 - 1 }, (_, i) => i % 2 ? 150 : 350));
 }
-addEventListener("pointerdown", primeAudio, { once: true });
+addEventListener("pointerdown", primeAudio, { passive: true });
 
 let wakeLock = null;
 async function keepAwake(on) { try { if (on && navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } if (!on && wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) { } }
@@ -112,10 +113,10 @@ async function keepAwake(on) { try { if (on && navigator.wakeLock && !wakeLock) 
    3) нарийвчлалаас бага хөдөлгөөнийг (зогсож байхад чичрэх) тоолохгүй
    4) сүүлийн 3 цэгийн дунджаар зөөлрүүлж зай тооцно */
 const ChaseTracker = {
-  indId: null, watchId: null, kept: [], smooth: [], dist: 0, last: null, level: 0, lastAlarm: 0, tick: null, status: "",
+  indId: null, watchId: null, kept: [], smooth: [], dist: 0, kmh: 0, maxKmh: 0, lastMove: 0, last: null, level: 0, lastAlarm: 0, tick: null, status: "",
   start(indId) {
     this.stop(); this.indId = indId; const x = S.inds[indId]; const c = x.chase || {};
-    this.kept = []; this.rej = []; this.smooth = (c.track || []).map(p => ({ ...p })); this.dist = c.distM || 0; this.level = 0; this.status = "GPS хайж байна…";
+    this.kept = []; this.rej = []; this.smooth = (c.track || []).map(p => ({ ...p })); this.dist = c.distM || 0; this.maxKmh = c.maxKmh || 0; this.kmh = 0; this.lastMove = 0; this.level = 0; this.status = "GPS хайж байна…";
     if (navigator.geolocation) this.watchId = navigator.geolocation.watchPosition(p => this.onPos(p), e => { this.status = "GPS алдаа: " + (e.message || e.code); emit(); }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
     else this.status = "GPS байхгүй";
     this.tick = setInterval(() => this.check(), 1000); keepAwake(true); emit();
@@ -146,9 +147,18 @@ const ChaseTracker = {
     const ps = this.smooth[this.smooth.length - 1];
     if (jumpReset || !prev) { if (jumpReset && this.dist === 0) this.smooth = []; } // эхний/дахин тогтоосон цэгээс зай нэмэхгүй
     else if (ps) this.dist += haversine(ps, sp);
+    if (jumpReset) sp.gap = true;
     this.smooth.push(sp);
-    if (this.indId && S.inds[this.indId]) updInd(this.indId, x => { x.chase = { track: this.smooth, distM: Math.round(this.dist) }; }, { noSync: true });
+    // Хурд: сүүлийн ≥4 секундын замаар (нэг цэгийн чичрэлтээс хамгаална)
+    if (prev && !jumpReset) {
+      let path = 0, i = this.smooth.length - 1;
+      while (i > 0 && !this.smooth[i].gap && sp.t - this.smooth[i].t < 4000) { path += haversine(this.smooth[i - 1], this.smooth[i]); i--; }
+      const dt = (sp.t - this.smooth[i].t) / 1000;
+      if (dt >= 4 && dt <= 30) { this.kmh = path / dt * 3.6; this.lastMove = pt.t; if (this.kmh < setting("gpsMaxKmh") && this.kmh > this.maxKmh) this.maxKmh = this.kmh; }
+    }
+    if (this.indId && S.inds[this.indId]) updInd(this.indId, x => { x.chase = { track: this.smooth, distM: Math.round(this.dist), maxKmh: Math.round(this.maxKmh) }; }, { noSync: true });
   },
+  speedNow() { return Date.now() - this.lastMove > 6000 ? 0 : this.kmh; },
   elapsed() { const x = S.inds[this.indId]; return x && x.steps.chaseStart ? Date.now() - x.steps.chaseStart.t : 0; },
   check() {
     if (!this.indId || !S.inds[this.indId]) return this.stop();
@@ -214,12 +224,14 @@ function abortChase(id) {
 /* ---------- тооцоо ---------- */
 const st = (x, k) => x.steps[k] && !x.steps[k].skipped ? x.steps[k].t : null;
 const diff = (a, b) => a && b ? b - a : null;
+const avgKmh = m => m.chase && m.chaseM ? Math.round(m.chaseM / 1000 / (m.chase / 3600000)) : null;
 function metrics(x) {
   const down = (x.side && (x.side.recumbent || x.side.down)) || null;
   const first = STEPS.map(s => st(x, s.k)).find(Boolean);
   return {
     chase: diff(st(x, "chaseStart"), st(x, "dart") || (x.chaseAborted && x.steps.chaseStop && x.steps.chaseStop.t)),
     chaseM: x.chase ? x.chase.distM : null,
+    maxKmh: x.chase && x.chase.maxKmh ? x.chase.maxKmh : null,
     induction: diff(st(x, "dart"), down && down.t),
     vet: diff(st(x, "vet"), (x.vet && x.vet.decidedAt) || st(x, "collarStart")),
     handling: diff(st(x, "collarStart"), st(x, "collarEnd")),
@@ -280,10 +292,10 @@ function indRow(x) {
   for (const k of ["chaseStart", "dart", "collarEnd"]) { const o = x.steps[k]; r[`${STEPS[STEP_IDX[k]].s} N`] = o && o.lat || ""; r[`${STEPS[STEP_IDX[k]].s} E`] = o && o.lng || ""; }
   r["Эмчийн үзлэг дууссан (OK)"] = x.vet && x.vet.decidedAt ? fmtHM(x.vet.decidedAt) : "";
   for (const [k, l] of [...SIDE.dart, ...SIDE.antidote]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
-  Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
+  Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Дундаж хурд (км/ц)": avgKmh(m) ?? "", "Дээд хурд (км/ц)": m.maxKmh ?? "", "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.injuries || "", "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
-    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "",
+    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
 }
@@ -386,7 +398,7 @@ function buildKml(list, title) {
 <Style id="dart"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
 <Style id="release"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle></Style>`;
   for (const x of list) {
-    const m = metrics(x), st2 = x.steps, desc = [x.sex, x.age ? x.age + " нас" : "", m.chase != null ? `хөөлт ${fmtDur(m.chase)}, ${kmOf(m.chaseM) || 0} км` : ""].filter(Boolean).join(" · ");
+    const m = metrics(x), st2 = x.steps, desc = [x.sex, x.age ? x.age + " нас" : "", m.chase != null ? `хөөлт ${fmtDur(m.chase)}, ${kmOf(m.chaseM) || 0} км${avgKmh(m) ? `, дундаж ${avgKmh(m)} км/ц` : ""}${m.maxKmh ? `, дээд ${m.maxKmh} км/ц` : ""}` : ""].filter(Boolean).join(" · ");
     k += `<Folder><name>${xmlEsc(label(x))}</name>`;
     k += pm(`${label(x)} — хөөлт эхэлсэн`, st2.chaseStart, "start", fmtDT(st2.chaseStart && st2.chaseStart.t));
     k += pm(`${label(x)} — буудсан`, st2.dart, "dart", desc);
@@ -625,7 +637,7 @@ function SurveyView({ id }) {
 
 /* ---------- Бодгаль: товчоор урагшилдаг цагийн шугам ---------- */
 function IndView({ id }) {
-  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null); const [qr, setQr] = useState(false);
+  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null); const [qr, setQr] = useState(false); const [showMiss, setShowMiss] = useState(false);
   const ci = x ? curStep(x) : -1; const running = x && ci >= 0;
   useTick(!!running);
   if (!x || x.deletedAt) return html`<div class="page"><${TopBar} title="Олдсонгүй" back="#/" /></div>`;
@@ -640,7 +652,7 @@ function IndView({ id }) {
   const m = metrics(x);
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
-    ${ci !== 0 && missing(x).length ? html`<div class="missing">Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : null}
+    ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => setShowMiss(false)}>Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
 
     ${lastK === "chaseStart" && !x.chaseAborted && html`<${ChasePanel} x=${x} />`}
@@ -672,7 +684,7 @@ function IndView({ id }) {
         ${(SIDE[sp.k] || []).filter(([k]) => x.side && x.side[k]).map(([k, l]) => html`<div class="dur">${l}: ${fmtHM(x.side[k].t)}</div>`)}
       </div></li>`; })}</ul>
       <div class="stats">
-        ${m.chase != null && html`<div class="stat"><b>${fmtDur(m.chase)}</b><span>Хөөсөн хугацаа</span></div><div class="stat"><b>${kmOf(m.chaseM) || 0} км</b><span>Хөөсөн зай</span></div>`}
+        ${m.chase != null && html`<div class="stat"><b>${fmtDur(m.chase)}</b><span>Хөөсөн хугацаа</span></div><div class="stat"><b>${kmOf(m.chaseM) || 0} км</b><span>Хөөсөн зай</span></div>${avgKmh(m) != null && html`<div class="stat"><b>${avgKmh(m)} км/ц</b><span>Дундаж хурд</span></div>`}${m.maxKmh != null && html`<div class="stat"><b>${m.maxKmh} км/ц</b><span>Дээд хурд</span></div>`}`}
         ${m.induction != null && html`<div class="stat"><b>${fmtDur(m.induction)}</b><span>Буудсанаас хэвтэх</span></div>`}
         ${m.handling != null && html`<div class="stat"><b>${fmtDur(m.handling)}</b><span>Хүзүүвчилсэн</span></div>`}
         ${m.monitoring != null && html`<div class="stat"><b>${fmtDur(m.monitoring)}</b><span>Хяналт</span></div>`}
@@ -731,6 +743,7 @@ function ChasePanel({ x }) {
   const el = ChaseTracker.indId === x.id ? ChaseTracker.elapsed() : Date.now() - x.steps.chaseStart.t;
   const dist = ChaseTracker.indId === x.id ? ChaseTracker.dist : (x.chase && x.chase.distM) || 0;
   const lvl = ChaseTracker.indId === x.id ? ChaseTracker.level : 0;
+  const live = ChaseTracker.indId === x.id, now = live ? Math.round(ChaseTracker.speedNow()) : 0, mx = Math.round(live ? ChaseTracker.maxKmh : (x.chase && x.chase.maxKmh) || 0), av = el > 20000 ? Math.round(dist / 1000 / (el / 3600000)) : 0;
   const pm = Math.min(100, el / 60000 / setting("chaseStopMin") * 100), pk = Math.min(100, dist / 1000 / setting("chaseStopKm") * 100);
   const bc = p => p >= 100 ? "bar s" : p >= (setting("chaseWarnMin") / setting("chaseStopMin")) * 100 ? "bar w" : "bar";
   return html`<div class=${"panel" + (lvl === 2 ? " stop" : lvl === 1 ? " warn" : "")}>
@@ -740,6 +753,7 @@ function ChasePanel({ x }) {
     ${lvl === 1 && html`<div class="center" style="font-weight:700;color:var(--warn)">Хязгаарт ойртож байна</div>`}
     <div class="stats"><div class="stat"><b>${(dist / 1000).toFixed(2)} км</b><span>Хөөсөн зай</span><div class=${bc(pk)}><i style=${`width:${pk}%`}></i></div></div>
       <div class="stat"><b>${Math.floor(el / 60000)} мин</b><span>Хугацаа</span><div class=${bc(pm)}><i style=${`width:${pm}%`}></i></div></div></div>
+    <div class="speed"><div><b>${now}</b><span>км/ц одоо</span></div><div><b>${av}</b><span>дундаж</span></div><div><b>${mx}</b><span>дээд</span></div></div>
     <div class="hint center">${ChaseTracker.status || ""} · Дэлгэцийг асаалттай, аппыг нээлттэй байлгана</div>
   </div>`;
 }
@@ -801,6 +815,10 @@ function CollarPanel({ x, compact }) {
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
     <${Field} label="Онцлох зан төрх"><${TextIn} val=${x.behaviour} on=${val => u("behaviour", val)} /><//>
     <label class="check"><input type="checkbox" checked=${!!x.trd} onChange=${e => u("trd", e.target.checked)} /> TRD соронз авсан</label>
+    <label class="check"><input type="checkbox" checked=${!!x.fit2} onChange=${e => u("fit2", e.target.checked)} /> Хоёр хуруу багтана (хүзүүвчний чангалаг)</label>
+    <label class="check"><input type="checkbox" checked=${!!x.eyes} onChange=${e => u("eyes", e.target.checked)} /> Нүд боосон, чих бөглөсөн</label>
+    <${Field} label="Хэвтүүлсэн байдал"><${Chips} opts=${LIE} val=${x.lie} on=${val => u("lie", val)} /><//>
+    <div class="grid2"><${Field} label="Буудсан сумны тоо"><${Chips} opts=${DART_N} val=${x.dartN} on=${val => u("dartN", val)} /><//><${Field} label="Сум туссан газар"><${Chips} opts=${DART_SITE} val=${x.dartSite} on=${val => u("dartSite", val)} /><//></div>
     <hr class="sep" />
     <${Field} label="Дээж">
       <div class="chips">${SAMPLE_TYPES.map(([c, l]) => html`<button class="chip" onClick=${() => addSample(c, l)}>+ ${l}</button>`)}</div>
