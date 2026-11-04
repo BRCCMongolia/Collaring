@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.4";
+const APP_VERSION = "0.4.5";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -377,7 +377,7 @@ async function saveFile(name, data, mime) {
 function buildSheets(list) {
   const vit = [], smp = [], trk = [], pho = [];
   for (const x of list) {
-    for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
+    for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Үе шат": a.stage === "collarStart" ? "Хүзүүвчлэх үед" : a.stage === "vet" ? "Эмчийн үзлэг" : a.stage ? (STEPS[STEP_IDX[a.stage]] || {}).s || "" : "", "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
     for (const a of x.samples || []) smp.push({ "Дээжийн дугаар": a.code, "Төрөл": a.label, "Хүзүүвч / бодгаль": label(x), "Цаг": fmtDT(a.t) });
     for (const p of x.photos || []) pho.push({ "Файл": photoName(x, p), "Хүзүүвч / бодгаль": label(x), "Төрөл": p.kind === "collar" ? "Хүзүүвч" : "Бодгаль", "Цаг": fmtDT(p.t), "Тэмдэглэл": p.note || "" });
     for (const p of (x.chase && x.chase.track) || []) trk.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(p.t), N: p.lat, E: p.lng });
@@ -669,7 +669,7 @@ function IndView({ id }) {
     ${lastK === "dart" && html`<${TimerPanel} title="Буудсанаас хойш (хяналт)" from=${x.steps.dart.t} />`}
     ${(lastK === "dart" || lastK === "antidote") && html`<${SideButtons} x=${x} k=${lastK} />`}
     ${lastK === "vet" && html`<${VetPanel} x=${x} />`}
-    ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><${CollarPanel} x=${x} />`}
+    ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} /></div><${CollarPanel} x=${x} />`}
     ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш (хяналт)" from=${x.steps.antidote.t} />`}
 
     ${next && !x.chaseAborted && html`<div>
@@ -779,21 +779,29 @@ function SideButtons({ x, k }) {
     return html`<button class=${"btn " + (o ? "okb" : "ghost")} style="flex:1" onClick=${() => updInd(x.id, y => { y.side = y.side || {}; if (y.side[sk]) delete y.side[sk]; else y.side[sk] = { t: Date.now() }; })}>${l}${o ? " " + fmtHM(o.t).slice(0, 5) : ""}</button>`; })}</div>`;
 }
 
+// Амин үзүүлэлт: эмчийн үзлэг, хүзүүвчлэх үед хоёуланд нь бичнэ (удирдамж 6.5: тасралтгүй хянана)
+function Vitals({ x }) {
+  const v = x.vet || {}; const e0 = { resp: "", hr: "", temp: "", mucous: "" };
+  const [vt, setVt] = useState(e0);
+  const hot = vt.temp !== "" && +String(vt.temp).replace(",", ".") >= 40;
+  const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; const stage = curStep(x) >= 0 ? STEPS[Math.max(0, curStep(x) - 1)].k : "";
+    updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = [...(y.vet.vitals || []), { ...vt, temp: String(vt.temp).replace(",", "."), stage, t: Date.now() }]; }); setVt(e0); showToast("Үзүүлэлт нэмэгдлээ"); };
+  return html`<${Field} label="Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)">
+      ${(v.vitals || []).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · <b style=${+a.temp >= 40 ? "color:var(--bad)" : ""}>${a.temp || "-"}°C</b> · ${a.mucous || "-"}</span></div>`)}
+      <div class="grid3 mt"><label><span class="mini">Амьсгал /мин</span><input class="inp" inputmode="numeric" placeholder="Амьсгал" value=${vt.resp} onInput=${e => setVt({ ...vt, resp: e.target.value })} /></label>
+        <label><span class="mini">Зүрх /мин</span><input class="inp" inputmode="numeric" placeholder="Зүрх" value=${vt.hr} onInput=${e => setVt({ ...vt, hr: e.target.value })} /></label>
+        <label><span class="mini">Биеийн хэм</span><input class="inp" inputmode="decimal" placeholder="Хэм °C" value=${vt.temp} onInput=${e => setVt({ ...vt, temp: e.target.value })} /></label></div>
+      ${hot && html`<div class="panel warn mt">⚠ Биеийн хэм 40 °C-ээс дээш байна. Малын эмчид мэдэгдэнэ.</div>`}
+      <div class="mt"><${Chips} opts=${MUCOUS} val=${vt.mucous} on=${val => setVt({ ...vt, mucous: val })} /></div>
+      <button class="btn sec mt" onClick=${addVit}>+ Үзүүлэлт нэмэх</button><//>`;
+}
 function VetPanel({ x }) {
   const v = x.vet || {}; const uv = (k, val) => updInd(x.id, y => { y.vet = { ...(y.vet || {}), [k]: val }; });
-  const [vt, setVt] = useState({ resp: "", hr: "", temp: "", mucous: "" });
-  const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; updInd(x.id, y => { y.vet.vitals = [...(y.vet.vitals || []), { ...vt, t: Date.now() }]; }); setVt({ resp: "", hr: "", temp: "", mucous: "" }); };
   return html`<div class="card"><h3 class="mb">Малын эмчийн үзлэг</h3>
     <${Field} label="Биеийн ерөнхий байдал" miss=${isMiss(x, "биеийн ерөнхий байдал")}><${Chips} opts=${BODY} val=${v.body} on=${val => uv("body", val)} /><//>
     <${Field} label="Ил харагдах шарх сорви"><${Chips} opts=${["Байхгүй", "Байгаа"]} val=${v.inj || (v.injuries ? "Байгаа" : "")} on=${val => uv("inj", val)} />
       ${(v.inj === "Байгаа" || (!v.inj && v.injuries)) && html`<div class="mt"><${TextIn} val=${v.injuries} on=${val => uv("injuries", val)} area=${true} ph="Хаана, ямар шарх сорви" /></div>`}<//>
-    <${Field} label="Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)">
-      ${(v.vitals || []).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · ${a.temp || "-"}°C · ${a.mucous || "-"}</span></div>`)}
-      <div class="grid2 mt"><input class="inp" inputmode="numeric" placeholder="Амьсгал /мин" value=${vt.resp} onInput=${e => setVt({ ...vt, resp: e.target.value })} />
-        <input class="inp" inputmode="numeric" placeholder="Зүрх /мин" value=${vt.hr} onInput=${e => setVt({ ...vt, hr: e.target.value })} /></div>
-      <div class="grid2 mt"><input class="inp" inputmode="decimal" placeholder="Биеийн хэм °C" value=${vt.temp} onInput=${e => setVt({ ...vt, temp: e.target.value })} />
-        <select class="inp" value=${vt.mucous} onChange=${e => setVt({ ...vt, mucous: e.target.value })}><option value="">Салст бүрхүүл</option>${MUCOUS.map(o => html`<option value=${o}>${o}</option>`)}</select></div>
-      <button class="btn sec sm mt" onClick=${addVit}>+ Үзүүлэлт нэмэх</button><//>
+    <${Vitals} x=${x} />
     <${Field} label="Эмчийн тэмдэглэл"><${QuickText} val=${v.notes} on=${val => uv("notes", val)} opts=${VETNOTE} area=${true} /><//>
     <div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
       <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>
