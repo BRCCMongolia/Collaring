@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.4.1";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -623,7 +623,7 @@ function SurveyView({ id }) {
     <${TopBar} title=${s.name} sub=${`${s.species} · ${list.length} бодгаль`} back="#/" right=${html`<button class="iconbtn" aria-label="Засах" onClick=${() => setEdit(true)}>✎</button>`} />
     <button class="btn pri block" onClick=${newInd}>+ Шинэ бодгаль</button>
     ${list.length ? Object.entries(groups).map(([g, xs]) => html`<div class="group-h">📍 ${g}</div>${xs.map(x => html`<button class=${"card link" + (x.status === "done" ? " done" : x.status === "aborted" ? " abort" : "")} onClick=${() => go("#/i/" + x.id)}>
-        <div class="ct">${label(x)} ${statusTag(x)}${missing(x).length && curStep(x) !== 0 ? html`<span class="tag bad">Дутуу ${missing(x).length}</span>` : null}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
+        <div class="ct">${label(x)} ${statusTag(x)}${missing(x).length && curStep(x) !== 0 ? html`<span class="tag bad">Дутуу ${missing(x).length}</span>` : null}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}${(() => { const m = metrics(x); return m.chase != null ? html`<br />🏃 ${fmtDur(m.chase)} · ${kmOf(m.chaseM) || 0} км${avgKmh(m) ? ` · дундаж ${avgKmh(m)} км/ц` : ""}${m.maxKmh ? ` · дээд ${m.maxKmh} км/ц` : ""}` : null; })()}</div></button>`)}`)
       : html`<div class="empty mt">Бодгаль алга. Амьтан харагдмагц «+ Шинэ бодгаль» дарна.</div>`}
     <div class="card mt"><table class="kv"><tbody>
       <tr><td>Баг</td><td>${(s.team || []).map(m => html`<div>${m.name} <span class="muted small">· ${m.role}</span></div>`)}</td></tr>
