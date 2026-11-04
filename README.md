@@ -13,7 +13,7 @@
 | `vendor/htm-preact.js` | Дэлгэц зурах жижиг сан (BRCC аппаас) |
 | `vendor/admin.js` | Аймаг, сумын жагсаалт (BRCC аппаас) |
 | `vendor/collars.js` | 30 хүзүүвч (161808–161837) ба Iridium IMEI |
-| `sw.js`, `manifest.json`, `*.png` | Сүлжээгүй ажиллах, нүүр дэлгэцэд суулгах, лого |
+| `sw.js`, `manifest.json`, `*.png` | Сүлжээгүй ажиллах, нүүр дэлгэцэд суулгах. `icon-*.png`: хулангийн дүрс, `logo-small.png`: BRCC лого |
 | `apps-script.gs` | Google Sheet руу өгөгдөл, Drive руу зураг хүлээн авах скрипт |
 
 ## Аппын бүтэц
@@ -41,7 +41,7 @@
 
 ## 1. Байршуулах (GitHub Pages)
 
-Репоны **Settings → Pages** → Source: **Deploy from a branch**, Branch: **main**, хавтас **/ (root)** → **Save**. Хэдэн минутын дараа апп `https://brccmongolia.github.io/collaring/` дээр гарна.
+Репоны **Settings → Pages** → Source: **Deploy from a branch**, Branch: **main**, хавтас **/ (root)** → **Save**. Хэдэн минутын дараа апп `https://brccmongolia.github.io/Collaring/` дээр гарна.
 
 Шинэ хувилбар гаргахдаа `sw.js` доторх `VERSION`-ийг өөрчилнө, тэгвэл утаснууд шинэчлэгдэнэ.
 
