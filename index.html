@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="theme-color" content="#A9532B">
+<meta name="theme-color" content="#2F6A5C">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -13,17 +13,17 @@
 <link rel="icon" href="icon-192.png">
 <title>BRCC Collaring</title>
 <style>
-/* "Говь" өнгө: элсний шаргал дэвсгэр, тоосгон улбар шар товч. Нүдэнд зөөлөн, нарны гэрэлд тод. */
+/* Тайван өнгө: цайвар ногоовтор дэвсгэр, гүн ногоон-хөх товч. Стресстэй үед нүдэнд зөөлөн, нарны гэрэлд тод. */
 :root{
-  --bg:#F4EDE1; --card:#FFFAF2; --ink:#14100C; --muted:#4E4034; --line:#DCCBB2;
-  --pri:#A9532B; --pri-d:#86401F; --pri-l:#F4E0CF; --pri-ink:#FFFFFF;
-  --ok:#5B7F3A; --ok-l:#E6EDD8; --warn:#B7791F; --warn-l:#FBEBCB; --bad:#B23A2E; --bad-l:#F7DCD6;
-  --shadow:0 1px 2px rgba(80,50,20,.08); --r:12px; --tap:52px;
+  --bg:#EEF2EC; --card:#FBFCF9; --ink:#13201B; --muted:#41524B; --line:#D2DDD5;
+  --pri:#2F6A5C; --pri-d:#224F45; --pri-l:#DCEBE5; --pri-ink:#FFFFFF;
+  --ok:#4E7F3A; --ok-l:#E2EDD8; --warn:#A8701C; --warn-l:#F8EBCF; --bad:#B0443A; --bad-l:#F5DEDA;
+  --bg-0:rgba(238,242,236,0); --bg-t:rgba(238,242,236,.92); --shadow:0 1px 2px rgba(20,50,40,.08); --r:12px; --tap:52px;
 }
 body.night{
-  --bg:#211B15; --card:#2C241C; --ink:#FFF8EE; --muted:#D9C8B2; --line:#54442F;
-  --pri:#D27A48; --pri-d:#F0B08A; --pri-l:#3E2C1F; --pri-ink:#1E1610;
-  --ok:#93B66E; --ok-l:#2D3622; --warn:#E3AE57; --warn-l:#3D2F17; --bad:#E77B6E; --bad-l:#422420;
+  --bg:#141B19; --bg-0:rgba(20,27,25,0); --bg-t:rgba(20,27,25,.92); --card:#1D2623; --ink:#EEF5F1; --muted:#B8C9C1; --line:#33443E;
+  --pri:#6DB3A1; --pri-d:#A6D8CB; --pri-l:#1F3631; --pri-ink:#0F1A17;
+  --ok:#93B66E; --ok-l:#26331F; --warn:#E3AE57; --warn-l:#3A2F18; --bad:#E58A7E; --bad-l:#3E2522;
 }
 *{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;font-size:18px;line-height:1.4;font-weight:500;padding-bottom:env(safe-area-inset-bottom)}
@@ -55,7 +55,7 @@ h1,h2,h3{margin:0;font-weight:650} h2{font-size:1.15rem} h3{font-size:1.02rem}
 .btn:disabled{opacity:.45}
 .bigbtn{display:flex;width:100%;min-height:84px;font-size:1.4rem;border-radius:18px;margin:4px 0 0;box-shadow:0 3px 0 var(--pri-d);position:relative}
 .bigbtn .stepno{position:absolute;left:14px;top:8px;font-size:.75rem;font-weight:700;opacity:.75}
-.nextbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:linear-gradient(rgba(244,237,225,0),var(--bg) 22%);padding:16px 16px calc(10px + env(safe-area-inset-bottom))}
+.nextbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:linear-gradient(var(--bg-0),var(--bg) 22%);padding:16px 16px calc(10px + env(safe-area-inset-bottom))}
 .nextbar .in{max-width:728px;margin:0 auto}
 body.night .nextbar{background:linear-gradient(rgba(33,27,21,0),var(--bg) 22%)}
 .page{padding-bottom:150px}
@@ -80,20 +80,20 @@ body.night .nextbar{background:linear-gradient(rgba(33,27,21,0),var(--bg) 22%)}
 .qrbox{background:#fff;border-radius:14px;padding:8px;max-width:420px;margin:0 auto} .qrbox svg{display:block;width:100%;height:auto}
 .nophoto{width:84px;height:84px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--muted);text-align:center}
 body.big{font-size:21px}
-.inp{color:var(--ink);font-weight:600} .inp::placeholder{color:#9A8873;font-weight:400}
+.inp{color:var(--ink);font-weight:600} .inp::placeholder{color:#8A9A93;font-weight:400}
 .chip{font-weight:600}
 /* алхмын том товч */
-.bigbtn{background:linear-gradient(135deg,#B9602F,#8E4220);min-height:88px;flex-direction:column;gap:2px;line-height:1.15}
+.bigbtn{background:linear-gradient(135deg,#3A7B6A,#275749);min-height:88px;flex-direction:column;gap:2px;line-height:1.15}
 .bigbtn .ico{font-size:1.6rem;line-height:1}
 .bigbtn .sub{font-size:.8rem;font-weight:600;opacity:.9}
-.bigbtn.go{background:radial-gradient(circle at 30% 20%,#E07A45,#A9532B 55%,#7C3818);min-height:104px;font-size:1.6rem;box-shadow:0 4px 0 #6A2F14,0 10px 24px rgba(169,83,43,.35);animation:breathe 2.4s ease-in-out infinite}
+.bigbtn.go{background:radial-gradient(circle at 30% 20%,#5FA48C,#2F6A5C 55%,#1F4A40);min-height:104px;font-size:1.6rem;box-shadow:0 4px 0 #173A32,0 10px 24px rgba(47,106,92,.35);animation:breathe 2.4s ease-in-out infinite}
 .bigbtn.go .ico{font-size:2rem}
-@keyframes breathe{50%{box-shadow:0 4px 0 #6A2F14,0 14px 30px rgba(169,83,43,.5)}}
-.bigbtn.shoot{background:linear-gradient(135deg,#C2402F,#8C2318);box-shadow:0 4px 0 #651A12}
-.bigbtn:disabled{background:#BBA990;box-shadow:none;animation:none}
+@keyframes breathe{50%{box-shadow:0 4px 0 #173A32,0 14px 30px rgba(47,106,92,.5)}}
+.bigbtn.shoot{background:linear-gradient(135deg,#3D6A86,#284B63);box-shadow:0 4px 0 #1B3547}
+.bigbtn:disabled{background:#A9B8B1;box-shadow:none;animation:none}
 /* загвар */
 :root{--r:16px;--shadow:0 1px 2px rgba(80,50,20,.06),0 6px 18px rgba(80,50,20,.07)}
-.topbar{background:rgba(244,237,225,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.topbar{background:var(--bg-t);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 body.night .topbar{background:rgba(33,27,21,.92)}
 .card{border-color:transparent}
 .card.link{border-left-width:7px}
@@ -101,7 +101,7 @@ body.night .topbar{background:rgba(33,27,21,.92)}
 .card h3::before{content:"";width:6px;height:18px;border-radius:3px;background:var(--pri)}
 .hero h1{font-size:1.7rem;letter-spacing:-.01em} .logo-lg{width:140px;border-radius:12px}
 .btn{border-radius:14px} .btn.ghost{box-shadow:var(--shadow);border-color:transparent}
-.btn.pri:not(.bigbtn){background:linear-gradient(135deg,#B9602F,#8E4220);box-shadow:0 3px 0 #6A2F14}
+.btn.pri:not(.bigbtn){background:linear-gradient(135deg,#3A7B6A,#275749);box-shadow:0 3px 0 #173A32}
 .chip{box-shadow:0 1px 2px rgba(80,50,20,.06)}
 .panel{border-radius:20px;box-shadow:var(--shadow)}
 .clock{font-size:3.8rem}
@@ -133,6 +133,8 @@ body.night .topbar{background:rgba(33,27,21,.92)}
 .bar.w>i{background:var(--warn)} .bar.s>i{background:var(--bad)}
 .sticky{position:fixed;left:0;right:0;bottom:0;z-index:15;background:linear-gradient(transparent,var(--bg) 30%);padding:18px 16px calc(12px + env(safe-area-inset-bottom))}
 .sticky .in{max-width:728px;margin:0 auto}
+.speed{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;text-align:center} .speed div{background:var(--pri-l);border-radius:12px;padding:8px 4px} .speed b{display:block;font-size:1.5rem;font-variant-numeric:tabular-nums;color:var(--pri-d)} .speed span{font-size:.8rem;color:var(--muted)}
+.missing.mini{display:inline-block;width:auto;padding:4px 12px;font-size:.85rem;font-family:inherit;cursor:pointer}
 .phlist{display:flex;flex-direction:column;gap:10px} .ph{display:flex;gap:10px;align-items:flex-start} .ph img,.ph .nophoto{width:84px;height:84px;flex:none;object-fit:cover;border-radius:10px;border:1px solid var(--line)} .phname{font-size:.85rem;color:var(--muted);margin-bottom:4px;word-break:break-all}
 .photos{display:flex;gap:8px;flex-wrap:wrap} .photos img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
 .sample{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg);border-radius:8px;margin-top:6px;font-variant-numeric:tabular-nums;font-weight:650}
