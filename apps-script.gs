@@ -1,7 +1,7 @@
 // BRCC Collaring — Google Sheet руу өгөгдөл, Google Drive руу зураг хүлээн авах скрипт.
 // Заавар: README.md → "Google Sheet холбох". Энэ кодыг Google Sheet → Extensions → Apps Script дотор буулгаад
 // Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone) гэж байршуулна.
-// Хуудсууд автоматаар үүснэ: Бодгаль, Судалгаа, Хөөлтийн зам, Зураг.
+// Хуудсууд автоматаар үүснэ: Бодгаль, Судалгаа, Амин үзүүлэлт, Дээж, Хөөлтийн зам, Зураг.
 const PHOTO_FOLDER = "BRCC Collaring зураг";
 
 function doPost(e) {
@@ -14,6 +14,7 @@ function doPost(e) {
       else if (it.kind === "ind") upsert(ss, "Бодгаль", it.row);
       else if (it.kind === "track") saveTrack(ss, it);
       else if (it.kind === "photo") savePhoto(ss, it);
+      else if (it.kind === "rows") saveRows(ss, it);
     });
     return ContentService.createTextOutput("ok");
   } finally { lock.releaseLock(); }
@@ -44,6 +45,21 @@ function saveTrack(ss, it) {
   }
   const rows = (it.points || []).map(function (p) { return [it.id, it.name, p[2], p[0], p[1]]; });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 5).setValues(rows);
+}
+
+// Амин үзүүлэлт, Дээж: нэг бодгалийн мөрүүдийг устгаад шинээр бичнэ (эхний багана = бодгалийн id)
+function saveRows(ss, it) {
+  let sh = ss.getSheetByName(it.sheet);
+  const header = ["Бодгалийн id"].concat(it.header || []);
+  if (!sh && !(it.rows || []).length) return;
+  if (!sh) { sh = ss.insertSheet(it.sheet); sh.appendRow(header); sh.getRange(1, 1, 1, header.length).setFontWeight("bold"); }
+  const last = sh.getLastRow();
+  if (last > 1) {
+    const ids = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (let i = ids.length - 1; i >= 0; i--) if (ids[i][0] === it.id) sh.deleteRow(i + 2);
+  }
+  const rows = (it.rows || []).map(function (r) { return [it.id].concat(r); });
+  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
 }
 
 function savePhoto(ss, it) {
