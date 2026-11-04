@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.1.2";
+const APP_VERSION = "0.2.3";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -15,16 +15,15 @@ const kmOf = m => m == null ? "" : Math.round(m) / 1000;
 /* ---------- алхмууд ---------- */
 const STEPS = [
   { k: "chaseStart", b: "Хөөлт эхэллээ", s: "Хөөлт эхэлсэн" },
-  { k: "dart", b: "Буудлаа", s: "Буудсан" },
-  { k: "postDart", b: "Буудсаны дараах хяналт", s: "Буудсаны дараах хяналт" },
-  { k: "vet", b: "Малын эмчийн үзлэг", s: "Малын эмчийн үзлэг" },
+  { k: "dart", b: "Буудлаа", s: "Буудсан (хяналт эхэлсэн)" },
+  { k: "vet", b: "Малын эмчийн үзлэг эхэллээ", s: "Эмчийн үзлэг эхэлсэн" },
   { k: "collarStart", b: "Хүзүүвчлэх эхэллээ", s: "Хүзүүвчилж эхэлсэн" },
   { k: "collarEnd", b: "Хүзүүвчилж дууслаа", s: "Хүзүүвчилж дууссан" },
-  { k: "monStart", b: "Хяналт эхэллээ", s: "Сэргэлтийн хяналт эхэлсэн" },
+  { k: "antidote", b: "Сэргээх тариа хийлээ", s: "Сэргээх тариа (хяналт эхэлсэн)" },
   { k: "monEnd", b: "Хяналт дууслаа", s: "Хяналт дууссан" },
 ];
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
-const SIDE = { postDart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], monStart: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
+const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
@@ -68,10 +67,12 @@ async function loadAll() {
   const lim = Date.now() - 30 * 864e5;
   for (const [id, x] of Object.entries(S.inds)) if (x.deletedAt && x.deletedAt < lim) { (x.photos || []).forEach(p => DB.del("photo:" + p.id)); delete S.inds[id]; }
   for (const [id, x] of Object.entries(S.surveys)) if (x.deletedAt && x.deletedAt < lim) delete S.surveys[id];
+  // v0.1 → v0.2: «Буудсаны дараах хяналт», «Хяналт эхэллээ» алхам хасагдаж, «Сэргээх тариа» нэмэгдсэн
+  for (const x of Object.values(S.inds)) { if (x.steps.monStart && !x.steps.antidote) x.steps.antidote = x.steps.monStart; delete x.steps.monStart; delete x.steps.postDart; }
   S.ready = true; document.body.classList.toggle("night", !!S.settings.night); emit();
   ChaseTracker.resume(); setTimeout(flushQueue, 2000);
 }
-function useStore() { const [, f] = useState(0); useEffect(() => { const cb = () => f(x => x + 1); subs.add(cb); return () => subs.delete(cb); }, []); return S; }
+function useStore() { const [, f] = useState(0); useEffect(() => { const cb = () => f(x => x + 1); subs.add(cb); if (S.ready) cb(); return () => subs.delete(cb); }, []); return S; } // ачаалал дуусчихсан бол шууд дахин зурна (эс бөгөөс «Ачаалж байна»-д гацдаг)
 const setting = k => S.settings[k] ?? DEFAULTS[k];
 
 function updSurvey(id, fn) { const s = { ...S.surveys[id] }; fn(s); s.updatedAt = Date.now(); S.surveys[id] = s; persist("surveys"); enqueue("survey", id); emit(); }
@@ -155,7 +156,7 @@ async function pressStep(id, k) {
   if (k === "chaseStart") { ChaseTracker.start(id); }
   if (k === "dart" && ChaseTracker.indId === id) { const f = lastFix(); ChaseTracker.stop(); if (f) updInd(id, x => Object.assign(x.steps.dart, f)); }
   if (k === "collarStart") showToast(`${setting("handleMin")} минутын таймер эхэллээ`);
-  if (["collarStart", "monStart", "postDart", "dart"].includes(k)) keepAwake(true);
+  if (["collarStart", "antidote", "dart", "vet"].includes(k)) keepAwake(true);
   if (k === "monEnd") keepAwake(false);
   if (k === "dart" && S.inds[id].steps.dart.lat) return;
   const pos = lastFix() || await getPosition();
@@ -171,12 +172,12 @@ function undoStep(id) {
   if (i < 0) return;
   const o = x.steps[STEPS[i].k];
   if (o && o.skipped && o.reason === "vet") { // эмчийн «OK биш» шийдвэрийг буцаана
-    updInd(id, y => { delete y.steps.collarStart; delete y.steps.collarEnd; y.vet.ok = undefined; y.released = ""; y.status = "open"; }); return;
+    updInd(id, y => { delete y.steps.collarStart; delete y.steps.collarEnd; y.vet.ok = undefined; delete y.vet.decidedAt; y.released = ""; y.status = "open"; }); return;
   }
   const k = STEPS[i].k;
   updInd(id, y => {
     for (let j = i; j < STEPS.length; j++) delete y.steps[STEPS[j].k];
-    if (k === "vet") { y.vet = { ...(y.vet || {}), ok: undefined }; }
+    if (k === "vet") { y.vet = { ...(y.vet || {}), ok: undefined }; delete y.vet.decidedAt; }
     if (k === "chaseStart") { y.chase = null; y.chaseAborted = false; }
     y.status = "open";
   });
@@ -204,12 +205,26 @@ function metrics(x) {
     chase: diff(st(x, "chaseStart"), st(x, "dart") || (x.chaseAborted && x.steps.chaseStop && x.steps.chaseStop.t)),
     chaseM: x.chase ? x.chase.distM : null,
     induction: diff(st(x, "dart"), down && down.t),
-    vet: diff(st(x, "vet"), st(x, "collarStart") || (x.vet && x.vet.ok === false ? x.vet.decidedAt : null)),
+    vet: diff(st(x, "vet"), (x.vet && x.vet.decidedAt) || st(x, "collarStart")),
     handling: diff(st(x, "collarStart"), st(x, "collarEnd")),
-    standUp: diff(st(x, "monStart"), x.side && x.side.stood && x.side.stood.t),
-    monitoring: diff(st(x, "monStart"), st(x, "monEnd")),
+    standUp: diff(st(x, "antidote"), x.side && x.side.stood && x.side.stood.t),
+    monitoring: diff(st(x, "antidote"), st(x, "monEnd")),
     total: diff(first, st(x, "monEnd")),
   };
+}
+// Дутуу мэдээлэл (дараа бөглөж болно, улаанаар харуулна)
+function missing(x) {
+  const m = [];
+  if (!x.aimag) m.push("аймаг"); if (!x.soum) m.push("сум"); if (!x.place) m.push("газрын нэр");
+  if (x.airTemp === "" || x.airTemp == null) m.push("агаарын хэм");
+  if (st(x, "vet") && !(x.vet && x.vet.body)) m.push("биеийн ерөнхий байдал");
+  if (st(x, "collarStart")) {
+    if (!x.collarId) m.push("хүзүүвчний дугаар"); if (!x.sex) m.push("хүйс"); if (x.age === "" || x.age == null) m.push("нас");
+    if (!(x.photos || []).some(p => p.kind === "collar")) m.push("хүзүүвчний зураг");
+    if (!(x.photos || []).some(p => p.kind === "animal")) m.push("бодгалийн зураг");
+  }
+  if (x.status === "done" && !x.recovery) m.push("сэргэлт");
+  return m;
 }
 const label = x => x.collarId ? `Бодгаль ${x.no} · ${x.collarId}` : `Бодгаль ${x.no}`;
 const fileLabel = x => x.collarId || `bodgal${x.no}`;
@@ -234,7 +249,7 @@ async function addPhoto(id, kind, file) {
   updInd(id, x => { x.photos = [...(x.photos || []), { id: pid, kind, t: Date.now() }]; });
   enqueue("photo", pid, { indId: id, kind });
 }
-function PhotoThumb({ pid }) { const [src, setSrc] = useState(null); useEffect(() => { DB.get("photo:" + pid).then(setSrc); }, [pid]); return src ? html`<img src=${src} alt="" />` : html`<div class="photos"><span class="muted small">…</span></div>`; }
+function PhotoThumb({ pid }) { const [src, setSrc] = useState(undefined); useEffect(() => { DB.get("photo:" + pid).then(v => setSrc(v || null)); }, [pid]); return src ? html`<img src=${src} alt="" />` : html`<div class="nophoto">${src === null ? "өөр утсанд" : "…"}</div>`; }
 
 /* ---------- Google Sheet руу илгээх ---------- */
 function enqueue(kind, id, extra) { S.queue = S.queue.filter(q => !(q.kind === kind && q.id === id)).concat([{ kind, id, at: Date.now(), ...(extra || {}) }]); persist("queue"); clearTimeout(enqueue.t); enqueue.t = setTimeout(flushQueue, 1500); }
@@ -245,7 +260,8 @@ function indRow(x) {
     "Агаарын хэм (°C)": x.airTemp ?? "", "Цаг агаар": x.weather || "" });
   for (const sp of STEPS) { const o = x.steps[sp.k]; r[sp.s] = o ? (o.skipped ? "алгассан" : fmtHM(o.t)) : ""; }
   for (const k of ["chaseStart", "dart", "collarEnd"]) { const o = x.steps[k]; r[`${STEPS[STEP_IDX[k]].s} N`] = o && o.lat || ""; r[`${STEPS[STEP_IDX[k]].s} E`] = o && o.lng || ""; }
-  for (const [k, l] of [...SIDE.postDart, ...SIDE.monStart]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
+  r["Эмчийн үзлэг дууссан (OK)"] = x.vet && x.vet.decidedAt ? fmtHM(x.vet.decidedAt) : "";
+  for (const [k, l] of [...SIDE.dart, ...SIDE.antidote]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.injuries || "", "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
@@ -285,11 +301,12 @@ const crc32 = u8 => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c 
 function makeZip(files) {
   const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
   const u16 = n => [n & 255, (n >> 8) & 255], u32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+  const now = new Date(), dt = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1), dd = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
   for (const f of files) {
     const name = enc.encode(f.name), data = typeof f.data === "string" ? enc.encode(f.data) : f.data, crc = crc32(data);
-    const head = new Uint8Array([0x50, 0x4b, 3, 4, ...u16(20), ...u16(0x800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
+    const head = new Uint8Array([0x50, 0x4b, 3, 4, ...u16(20), ...u16(0x800), ...u16(0), ...u16(dt), ...u16(dd), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
     parts.push(head, name, data);
-    central.push(new Uint8Array([0x50, 0x4b, 1, 2, ...u16(20), ...u16(20), ...u16(0x800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), name);
+    central.push(new Uint8Array([0x50, 0x4b, 1, 2, ...u16(20), ...u16(20), ...u16(0x800), ...u16(0), ...u16(dt), ...u16(dd), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), name);
     offset += head.length + name.length + data.length;
   }
   let cdLen = 0; for (const c of central) cdLen += c.length;
@@ -320,8 +337,7 @@ async function saveFile(name, data, mime) {
   if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
-function exportSurvey(sid) {
-  const s = S.surveys[sid], list = sid ? indsOf(sid) : Object.values(S.inds).filter(x => !x.deletedAt);
+function buildSheets(list) {
   const vit = [], smp = [], trk = [];
   for (const x of list) {
     for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
@@ -332,7 +348,142 @@ function exportSurvey(sid) {
   if (vit.length) sheets.push({ name: "Амин үзүүлэлт", rows: toRows(vit) });
   if (smp.length) sheets.push({ name: "Дээж", rows: toRows(smp) });
   if (trk.length) sheets.push({ name: "Хөөлтийн зам", rows: toRows(trk) });
-  saveFile(`BRCC_Collaring_${(s ? s.name : "bugd").replace(/[^\wА-Яа-яЁёӨөҮү-]+/g, "_")}_${fmtDate(Date.now())}.xlsx`, makeXlsx(sheets), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  return sheets;
+}
+const safeName = n => (n || "bugd").replace(/[^\wА-Яа-яЁёӨөҮү-]+/g, "_");
+function exportSurvey(sid) {
+  const s = S.surveys[sid], list = sid ? indsOf(sid) : Object.values(S.inds).filter(x => !x.deletedAt);
+  saveFile(`BRCC_Collaring_${safeName(s && s.name)}_${fmtDate(Date.now())}.xlsx`, makeXlsx(buildSheets(list)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+/* ---------- ZIP: Excel + KMZ + бүх зураг ---------- */
+function b64ToBytes(dataUrl) { const b = atob(dataUrl.split(",")[1]); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+function buildKml(list, title) {
+  const pm = (name, p, style, desc) => p && p.lat ? `<Placemark><name>${xmlEsc(name)}</name><styleUrl>#${style}</styleUrl><description>${xmlEsc(desc || "")}</description><Point><coordinates>${p.lng},${p.lat},0</coordinates></Point></Placemark>` : "";
+  let k = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlEsc(title)}</name>
+<Style id="chase"><LineStyle><color>ff2b53a9</color><width>4</width></LineStyle></Style>
+<Style id="start"><IconStyle><color>ff7ab5f3</color><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>
+<Style id="dart"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
+<Style id="release"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle></Style>`;
+  for (const x of list) {
+    const m = metrics(x), st2 = x.steps, desc = [x.sex, x.age ? x.age + " нас" : "", m.chase != null ? `хөөлт ${fmtDur(m.chase)}, ${kmOf(m.chaseM) || 0} км` : ""].filter(Boolean).join(" · ");
+    k += `<Folder><name>${xmlEsc(label(x))}</name>`;
+    k += pm(`${label(x)} — хөөлт эхэлсэн`, st2.chaseStart, "start", fmtDT(st2.chaseStart && st2.chaseStart.t));
+    k += pm(`${label(x)} — буудсан`, st2.dart, "dart", desc);
+    k += pm(`${label(x)} — суллагдсан`, (st2.collarEnd && st2.collarEnd.lat ? st2.collarEnd : st2.monEnd), "release", desc);
+    const tr = (x.chase && x.chase.track) || [];
+    if (tr.length > 1) k += `<Placemark><name>${xmlEsc(label(x))} — хөөлтийн зам</name><styleUrl>#chase</styleUrl><LineString><tessellate>1</tessellate><coordinates>${tr.map(p => `${p.lng},${p.lat},0`).join(" ")}</coordinates></LineString></Placemark>`;
+    k += "</Folder>";
+  }
+  return k + "</Document></kml>";
+}
+function saveChaseKmz(x) { saveFile(`${fileLabel(x)}_hooltiin_zam_${fmtDate(x.steps.chaseStart ? x.steps.chaseStart.t : Date.now())}.kmz`, makeZip([{ name: "doc.kml", data: buildKml([x], label(x)) }]), "application/vnd.google-earth.kmz"); }
+async function exportZip(sid) {
+  const s = S.surveys[sid], list = indsOf(sid), base = `BRCC_Collaring_${safeName(s.name)}_${fmtDate(Date.now())}`;
+  showToast("ZIP бэлдэж байна…");
+  const files = [{ name: base + ".xlsx", data: makeXlsx(buildSheets(list)) }, { name: base + ".kmz", data: makeZip([{ name: "doc.kml", data: buildKml(list, s.name) }]) }];
+  let missing = 0;
+  for (const x of list) { const n = {}; for (const p of x.photos || []) { const d = await DB.get("photo:" + p.id); if (!d) { missing++; continue; } const k = p.kind === "collar" ? "huzuuvch" : "bodgal"; n[k] = (n[k] || 0) + 1; files.push({ name: `zurag/${fileLabel(x)}_${k}_${n[k]}.jpg`, data: b64ToBytes(d) }); } }
+  await saveFile(base + ".zip", makeZip(files), "application/zip");
+  if (missing) showToast(`${missing} зураг өөр утсанд байгаа тул ZIP-д ороогүй`);
+}
+
+/* ---------- QR-оор утас хооронд дамжуулах ----------
+   Өгөгдлийг шахаж (deflate) хэсэглээд QR-уудыг ээлжлэн үзүүлнэ. Уншигч утас бүх хэсгийг цуглуулаад нэгтгэнэ. Зураг орохгүй. */
+const QR_CHUNK = 420; // бага байх тусам QR сийрэг, уншихад амар
+const bytesToB64 = u => { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+async function packData(obj) {
+  const str = JSON.stringify(obj);
+  if (window.CompressionStream) { const st = new Blob([str]).stream().pipeThrough(new CompressionStream("deflate-raw")); return "Z" + bytesToB64(new Uint8Array(await new Response(st).arrayBuffer())); }
+  return "J" + bytesToB64(new TextEncoder().encode(str));
+}
+async function unpackData(s) {
+  const raw = b64ToBytes("x," + s.slice(1));
+  if (s[0] === "Z") { const st = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw")); return JSON.parse(await new Response(st).text()); }
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+function transferPayload(scope) { // scope: {surveyId} | {indId} | null (бүгд)
+  const thin = tr => { if (!tr || tr.length <= 150) return tr; const st = tr.length / 150; const o = []; for (let i = 0; i < tr.length; i += st) o.push(tr[Math.floor(i)]); o.push(tr[tr.length - 1]); return o; }; // QR-д зориулж замыг 150 цэг болгоно (зай нь хадгалагдсан)
+  const strip = x => ({ ...x, chase: x.chase ? { ...x.chase, track: thin(x.chase.track) } : x.chase, photos: (x.photos || []).map(p => ({ id: p.id, kind: p.kind, t: p.t })) });
+  let inds = Object.values(S.inds).filter(x => !x.deletedAt && S.surveys[x.surveyId] && !S.surveys[x.surveyId].deletedAt);
+  if (scope && scope.surveyId) inds = inds.filter(x => x.surveyId === scope.surveyId);
+  if (scope && scope.indId) inds = inds.filter(x => x.id === scope.indId);
+  const sids = new Set(inds.map(x => x.surveyId)); if (scope && scope.surveyId) sids.add(scope.surveyId); if (!scope) liveSurveys().forEach(s => sids.add(s.id));
+  return { app: "brcc-collaring", v: 1, from: S.settings.recorder || "", at: Date.now(), surveys: Object.fromEntries([...sids].map(id => [id, S.surveys[id]])), inds: Object.fromEntries(inds.map(x => [x.id, strip(x)])) };
+}
+function mergeIncoming(d) {
+  if (!d || d.app !== "brcc-collaring") throw new Error("BRCC Collaring-ийн QR биш");
+  const map = {}; let ns = 0, ni = 0, nu = 0;
+  for (const s of Object.values(d.surveys || {})) {
+    const local = (S.surveys[s.id] && !S.surveys[s.id].deletedAt) ? S.surveys[s.id] : liveSurveys().find(l => normMn(l.name).trim() === normMn(s.name).trim() && l.species === s.species);
+    if (local) { map[s.id] = local.id; if (local.id === s.id && (local.updatedAt || 0) < (s.updatedAt || 0)) S.surveys[s.id] = { ...s }; }
+    else { S.surveys[s.id] = { ...s }; map[s.id] = s.id; ns++; enqueue("survey", s.id); }
+  }
+  let lastId = null;
+  for (const x of Object.values(d.inds || {})) {
+    const y = { ...x, surveyId: map[x.surveyId] || x.surveyId }, cur = S.inds[x.id];
+    if (!cur) { S.inds[x.id] = y; ni++; lastId = x.id; enqueue("ind", x.id); }
+    else if ((cur.updatedAt || 0) < (y.updatedAt || 0)) { S.inds[x.id] = y; nu++; lastId = x.id; enqueue("ind", x.id); }
+  }
+  // нэг хүзүүвч хоёр өөр бодгальд бүртгэгдсэн эсэх
+  const seen = {}, dup = new Set(); Object.values(S.inds).filter(x => !x.deletedAt && x.collarId).forEach(x => { if (seen[x.collarId]) dup.add(x.collarId); seen[x.collarId] = 1; });
+  persist("surveys"); persist("inds"); emit();
+  return { ns, ni, nu, dup: [...dup], lastId, single: Object.keys(d.inds || {}).length === 1 };
+}
+
+function QrShow({ scope, title, onClose }) {
+  const [frames, setFrames] = useState(null), [i, setI] = useState(0), [speed, setSpeed] = useState(700), [err, setErr] = useState("");
+  useEffect(() => { (async () => { try {
+    const data = await packData(transferPayload(scope)), tid = uid().slice(-4), n = Math.ceil(data.length / QR_CHUNK) || 1;
+    const fr = []; for (let k = 0; k < n; k++) { const qr = qrcode(0, "L"); qr.addData(`BC1|${tid}|${k}|${n}|` + data.slice(k * QR_CHUNK, (k + 1) * QR_CHUNK), "Byte"); qr.make(); fr.push(qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true })); }
+    setFrames(fr); keepAwake(true);
+  } catch (e) { setErr(e.message); } })(); return () => keepAwake(false); }, []);
+  useEffect(() => { if (!frames || frames.length < 2) return; const t = setInterval(() => setI(v => (v + 1) % frames.length), speed); return () => clearInterval(t); }, [frames, speed]);
+  return html`<${Modal} title=${title || "QR үзүүлэх"} onClose=${onClose}>
+    ${err ? html`<div class="panel warn">${err}</div>` : !frames ? html`<p class="center muted">Бэлдэж байна…</p>` : html`
+      <div class="qrbox" dangerouslySetInnerHTML=${{ __html: frames[i] }}></div>
+      <div class="center mt"><b>${i + 1} / ${frames.length}</b> <span class="muted small">· нөгөө утсаар «QR уншуулах» дарж камерыг энд чиглүүлнэ</span></div>
+      ${frames.length > 1 && html`<div class="row mt" style="justify-content:center"><button class="btn ghost sm" onClick=${() => setSpeed(v => Math.min(2000, v + 300))}>Удаан</button><button class="btn ghost sm" onClick=${() => setSpeed(v => Math.max(300, v - 200))}>Хурдан</button></div>`}
+      <p class="hint center">Зураг QR-д орохгүй. Зургийг ZIP эсвэл Google Sheet-ээр авна.</p>`}
+  <//>`;
+}
+function QrScan({ onClose }) {
+  const vid = useRef(null), [got, setGot] = useState({ n: 0, have: 0 }), [msg, setMsg] = useState("Камер асааж байна…"), [res, setRes] = useState(null);
+  useEffect(() => {
+    let stream = null, stop = false, parts = {}, tid = null, total = 0;
+    const cv = document.createElement("canvas"), ctx = cv.getContext("2d", { willReadFrequently: true });
+    const loop = async () => {
+      if (stop) return; const v = vid.current;
+      if (v && v.readyState >= 2 && v.videoWidth) {
+        const sc = Math.min(1, 720 / v.videoWidth); cv.width = Math.round(v.videoWidth * sc); cv.height = Math.round(v.videoHeight * sc); ctx.drawImage(v, 0, 0, cv.width, cv.height);
+        const c = jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: "dontInvert" });
+        if (c && c.data.startsWith("BC1|")) {
+          const [, t, k, n] = c.data.split("|", 4), body = c.data.slice(c.data.indexOf("|", c.data.indexOf("|", c.data.indexOf("|", 4) + 1) + 1) + 1);
+          if (tid !== t) { tid = t; parts = {}; total = +n; }
+          if (parts[k] === undefined) { parts[k] = body; if (navigator.vibrate) navigator.vibrate(30); setGot({ n: total, have: Object.keys(parts).length }); setMsg(""); }
+          if (Object.keys(parts).length === total) {
+            stop = true; if (stream) stream.getTracks().forEach(tr => tr.stop());
+            try { const d = await unpackData(Array.from({ length: total }, (_, j) => parts[j]).join("")); const r = mergeIncoming(d); r.from = d.from; setRes(r); beep(1); }
+            catch (e) { setMsg("Алдаа: " + e.message); }
+            return;
+          }
+        }
+      }
+      setTimeout(loop, 120);
+    };
+    (async () => { try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); if (vid.current) { vid.current.srcObject = stream; await vid.current.play(); } setMsg("QR руу чиглүүлнэ үү"); loop(); }
+      catch (e) { setMsg("Камер нээж чадсангүй: " + (e.message || e.name) + ". Тохиргооноос камерын зөвшөөрөл өгнө үү."); } })();
+    return () => { stop = true; if (stream) stream.getTracks().forEach(tr => tr.stop()); };
+  }, []);
+  return html`<${Modal} title="QR уншуулах" onClose=${onClose}>
+    ${res ? html`<div class="panel"><h3 class="mb">✓ Нэгтгэлээ${res.from ? ` (${res.from})` : ""}</h3>
+        <div>Шинэ бодгаль: <b>${res.ni}</b> · Шинэчилсэн: <b>${res.nu}</b>${res.ns ? html` · Шинэ судалгаа: <b>${res.ns}</b>` : ""}</div>
+        ${res.dup.length ? html`<div class="panel warn mt">⚠ Нэг хүзүүвч хоёр бодгальд бүртгэлтэй: ${res.dup.join(", ")}. Шалгаж, илүүг нь устгана уу.</div>` : ""}
+        ${res.single && res.lastId ? html`<button class="btn pri block mt" onClick=${() => { onClose(); go("#/i/" + res.lastId); }}>Бодгалийг нээж үргэлжлүүлэх</button>` : html`<button class="btn pri block mt" onClick=${onClose}>Болсон</button>`}</div>`
+      : html`<video ref=${vid} playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:1;object-fit:cover"></video>
+        <div class="center mt">${got.n ? html`<b>${got.have} / ${got.n}</b> хэсэг уншигдлаа` : ""} <span class="muted">${msg}</span></div>
+        ${got.n ? html`<div class="bar"><i style=${`width:${got.have / got.n * 100}%`}></i></div>` : ""}`}
+  <//>`;
 }
 function exportBackup() { saveFile(`BRCC_Collaring_noots_${fmtDate(Date.now())}.json`, JSON.stringify({ app: "brcc-collaring", v: APP_VERSION, surveys: S.surveys, inds: S.inds }), "application/json"); }
 async function importBackup(file) {
@@ -378,7 +529,7 @@ function AboutView() {
   </div>`;
 }
 function Home() {
-  const [show, setShow] = useState(false); useStore();
+  const [show, setShow] = useState(false), [scan, setScan] = useState(false), [qr, setQr] = useState(false); useStore();
   const list = liveSurveys();
   return html`<div class="page">
     <${TopBar} title="BRCC Collaring" sub="Зэрлэг амьтан барих, хүзүүвчлэх бүртгэл" right=${html`<button class="iconbtn" aria-label="Тохиргоо" onClick=${() => go("#/settings")}>⚙</button>`} />
@@ -389,8 +540,12 @@ function Home() {
     ${list.length ? list.map(s => { const n = indsOf(s.id); const c = n.filter(x => x.collarId && x.steps.collarEnd && !x.steps.collarEnd.skipped).length;
       return html`<button class="card link" onClick=${() => go("#/s/" + s.id)}><div class="ct">${s.name}<span class="tag">${s.species}</span></div><div class="cs">${n.length} бодгаль · ${c} хүзүүвчилсэн · ${fmtDate(s.createdAt)}</div></button>`; })
       : html`<div class="empty">Судалгаа алга. «+ Шинэ судалгаа» дарж эхлээрэй.</div>`}
+    <div class="row mt"><button class="btn ghost" style="flex:1" onClick=${() => setScan(true)}>📷 QR уншуулах</button><button class="btn ghost" style="flex:1" onClick=${() => setQr(true)}>▦ QR үзүүлэх</button></div>
+    <p class="hint">Бусад утасны өгөгдлийг өөрийн утсанд цуглуулах: тэр утсан дээр «QR үзүүлэх», энэ утсан дээр «QR уншуулах».</p>
     <${Footer} />
     ${show && html`<${SurveyModal} onClose=${() => setShow(false)} />`}
+    ${scan && html`<${QrScan} onClose=${() => setScan(false)} />`}
+    ${qr && html`<${QrShow} scope=${null} title="QR: бүх өгөгдөл" onClose=${() => setQr(false)} />`}
   </div>`;
 }
 
@@ -421,7 +576,7 @@ function SurveyModal({ onClose, survey }) {
 
 /* ---------- Судалгаа ---------- */
 function SurveyView({ id }) {
-  useStore(); const s = S.surveys[id]; const [edit, setEdit] = useState(false);
+  useStore(); const s = S.surveys[id]; const [edit, setEdit] = useState(false); const [qr, setQr] = useState(false);
   if (!s || s.deletedAt) return html`<div class="page"><${TopBar} title="Олдсонгүй" back="#/" /></div>`;
   const list = indsOf(id);
   const groups = {}; list.forEach(x => { const g = [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "Байршил оруулаагүй"; (groups[g] = groups[g] || []).push(x); });
@@ -436,46 +591,54 @@ function SurveyView({ id }) {
     <${TopBar} title=${s.name} sub=${`${s.species} · ${list.length} бодгаль`} back="#/" right=${html`<button class="iconbtn" aria-label="Засах" onClick=${() => setEdit(true)}>✎</button>`} />
     <button class="btn pri block" onClick=${newInd}>+ Шинэ бодгаль</button>
     ${list.length ? Object.entries(groups).map(([g, xs]) => html`<div class="group-h">📍 ${g}</div>${xs.map(x => html`<button class=${"card link" + (x.status === "done" ? " done" : x.status === "aborted" ? " abort" : "")} onClick=${() => go("#/i/" + x.id)}>
-        <div class="ct">${label(x)} ${statusTag(x)}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
+        <div class="ct">${label(x)} ${statusTag(x)}${missing(x).length && curStep(x) !== 0 ? html`<span class="tag bad">Дутуу ${missing(x).length}</span>` : null}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
       : html`<div class="empty mt">Бодгаль алга. Амьтан харагдмагц «+ Шинэ бодгаль» дарна.</div>`}
     <div class="card mt"><table class="kv"><tbody>
       <tr><td>Баг</td><td>${(s.team || []).map(m => html`<div>${m.name} <span class="muted small">· ${m.role}</span></div>`)}</td></tr>
       <tr><td>Бүртгэгч</td><td>${s.recorder}</td></tr></tbody></table></div>
-    <div class="row wrap mt"><button class="btn ghost" onClick=${() => exportSurvey(id)}>⬇ Excel татах</button><button class="btn danger" onClick=${del}>Устгах</button></div>
+    <div class="row wrap mt"><button class="btn ghost" onClick=${() => exportZip(id)}>📦 ZIP илгээх</button><button class="btn ghost" onClick=${() => exportSurvey(id)}>⬇ Excel</button><button class="btn ghost" onClick=${() => setQr(true)}>▦ QR үзүүлэх</button><button class="btn danger" onClick=${del}>Устгах</button></div>
+    <p class="hint">ZIP: Excel + KMZ (хөөлтийн зам, буудсан, суллагдсан цэг) + бүх зураг. QR: энэ судалгааг өөр утас руу дамжуулна.</p>
+    ${qr && html`<${QrShow} scope=${{ surveyId: id }} title=${"QR: " + s.name} onClose=${() => setQr(false)} />`}
     ${edit && html`<${SurveyModal} survey=${s} onClose=${() => setEdit(false)} />`}
   </div>`;
 }
 
 /* ---------- Бодгаль: товчоор урагшилдаг цагийн шугам ---------- */
 function IndView({ id }) {
-  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null);
+  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null); const [qr, setQr] = useState(false);
   const ci = x ? curStep(x) : -1; const running = x && ci >= 0;
   useTick(!!running);
   if (!x || x.deletedAt) return html`<div class="page"><${TopBar} title="Олдсонгүй" back="#/" /></div>`;
   const s = S.surveys[x.surveyId] || {};
   const lastK = ci < 0 ? "monEnd" : ci > 0 ? STEPS[ci - 1].k : null;
   const next = ci >= 0 ? STEPS[ci] : null;
-  const blocked = next && next.k === "collarStart" && x.vet && x.vet.ok !== true; // эмч OK гэж хэлэхээс өмнө хүзүүвчлэхгүй
+  const vetBlock = next && next.k === "collarStart" && x.vet && x.vet.ok !== true && !(x.steps.vet && x.steps.vet.skipped); // эмч OK гэж хэлэхээс өмнө хүзүүвчлэхгүй
+  const collarBlock = next && next.k === "collarEnd" && !x.collarId; // хүзүүвчний дугааргүйгээр дуусгахгүй
+  const blocked = vetBlock || collarBlock;
   const startFrom = i => { updInd(id, y => { for (let j = 0; j < i; j++) y.steps[STEPS[j].k] = { skipped: true, reason: "start" }; }); setStartPick(false); pressStep(id, STEPS[i].k); };
   const del = () => { if (confirmAll([`${label(x)} бодгалийг устгах уу?`, "Үнэхээр устгах уу? (Хогийн саванд 30 хоног хадгалагдана)"])) { if (ChaseTracker.indId === id) ChaseTracker.stop(); updInd(id, y => { y.deletedAt = Date.now(); }); go("#/s/" + x.surveyId); } };
   const m = metrics(x);
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
+    ${ci !== 0 && missing(x).length ? html`<div class="missing">Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
 
     ${lastK === "chaseStart" && !x.chaseAborted && html`<${ChasePanel} x=${x} />`}
-    ${lastK === "postDart" && html`<${TimerPanel} title="Буудсанаас хойш" from=${st(x, "dart") || x.steps.postDart.t} />`}
-    ${(lastK === "postDart" || lastK === "monStart") && html`<${SideButtons} x=${x} k=${lastK} />`}
+    ${lastK === "dart" && html`<${TimerPanel} title="Буудсанаас хойш (хяналт)" from=${x.steps.dart.t} />`}
+    ${(lastK === "dart" || lastK === "antidote") && html`<${SideButtons} x=${x} k=${lastK} />`}
     ${lastK === "vet" && html`<${VetPanel} x=${x} />`}
     ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><${CollarPanel} x=${x} />`}
-    ${lastK === "monStart" && html`<${TimerPanel} title="Хяналт эхэлснээс хойш" from=${x.steps.monStart.t} />`}
+    ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш (хяналт)" from=${x.steps.antidote.t} />`}
 
     ${next && !x.chaseAborted && html`<div>
-      <button class=${"btn pri bigbtn" + (next.k === "dart" && ChaseTracker.level === 2 ? " badb" : "")} disabled=${blocked} onClick=${() => pressStep(id, next.k)}>${next.b}</button>
-      ${blocked && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
       ${next.k === "dart" && html`<button class="btn ghost block mt" onClick=${() => { if (confirm("Хөөлтийг буудалгүй зогсоох уу?")) abortChase(id); }}>Хөөлтийг зогсоох (буудаагүй)</button>`}
-      ${ci === 0 && html`<button class="btn sec block" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
+      ${ci === 0 && html`<button class="btn sec block mt" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
       ${startPick && html`<div class="card mt">${STEPS.slice(1).map((sp, i) => html`<button class="btn ghost block mb" onClick=${() => startFrom(i + 1)}>${sp.b}</button>`)}</div>`}
+      <div class="nextbar"><div class="in">
+        ${vetBlock && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
+        ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
+        <button class=${"btn pri bigbtn" + (next.k === "dart" && ChaseTracker.level === 2 ? " badb" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span>${next.b}</button>
+      </div></div>
     </div>`}
 
     ${(ci < 0 || x.chaseAborted) && html`<${FinishPanel} x=${x} />`}
@@ -495,7 +658,11 @@ function IndView({ id }) {
         ${m.monitoring != null && html`<div class="stat"><b>${fmtDur(m.monitoring)}</b><span>Хяналт</span></div>`}
         ${m.total != null && html`<div class="stat"><b>${fmtDur(m.total)}</b><span>Нийт</span></div>`}
       </div></div>
+    ${x.chase && x.chase.track && x.chase.track.length > 1 && st(x, "dart") && html`<button class="btn sec block mt" onClick=${() => saveChaseKmz(x)}>🗺 Хөөлтийн замыг KMZ хадгалах</button>`}
     ${ci !== 0 && html`<${PlaceCard} x=${x} />`}
+    <button class="btn ghost block mt" onClick=${() => setQr(true)}>▦ Энэ бодгалийг QR-оор дамжуулах</button>
+    <div class="hint center">Нөгөө машины утас «QR уншуулах»-аар аваад үргэлжлүүлнэ.</div>
+    ${qr && html`<${QrShow} scope=${{ indId: id }} title=${"QR: " + label(x)} onClose=${() => setQr(false)} />`}
     <button class="btn danger block mt" onClick=${del}>Бодгалийг устгах</button>
     ${editT && html`<${EditTime} x=${x} k=${editT} onClose=${() => setEditT(null)} />`}
   </div>`;
@@ -586,7 +753,7 @@ function VetPanel({ x }) {
     <${Field} label="Эмчийн тэмдэглэл"><${TextIn} val=${v.notes} on=${val => uv("notes", val)} area=${true} /><//>
     <div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
       <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>
-    ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй суллана. Доорх «Хяналт эхэллээ» товчоор сэргэлтийг бүртгэнэ.</div>`}
+    ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй. Доорх «Сэргээх тариа хийлээ» товчоор үргэлжлүүлнэ.</div>`}
   </div>`;
 }
 
@@ -602,7 +769,7 @@ function CollarPanel({ x, compact }) {
   const addSample = (code, l) => updInd(x.id, y => { const n = (y.samples || []).filter(a => a.type === code).length + 1; y.samples = [...(y.samples || []), { code: `${short}-${code}-${n}`, type: code, label: l, t: Date.now() }]; });
   const free = COLLARS.filter(c => !used.has(c.id));
   return html`<div class="card"><h3 class="mb">${compact ? "Хүзүүвч, бодгалийн мэдээлэл" : "Хүзүүвчлэх"}</h3>
-    <${Field} label="Хүзүүвчний дугаар" hint=${x.collarId ? `IMEI ${x.imei}` : `Сүүлийн 3 оронг бичнэ (ж: 808). Үлдсэн ${free.length} хүзүүвч.`}>
+    <${Field} label="Хүзүүвчний дугаар *" hint=${x.collarId ? `IMEI ${x.imei}` : `Сүүлийн 3 оронг бичнэ (ж: 808). Үлдсэн ${free.length} хүзүүвч.`}>
       ${x.collarId ? html`<div class="row"><div class="grow" style="font-size:1.6rem;font-weight:750">${x.collarId}</div><button class="btn ghost sm" onClick=${() => updInd(x.id, y => { y.collarId = ""; y.imei = ""; })}>Солих</button></div>`
         : html`<input class="inp" inputmode="numeric" placeholder="808" value=${q} onInput=${e => setQ(e.target.value.replace(/\D/g, ""))} />
           ${matches.length ? html`<div class="chips mt">${matches.slice(0, 8).map(c => html`<button class="chip" onClick=${() => pick(c)}>${c.id}${used.has(c.id) ? " (ашигласан)" : ""}</button>`)}</div>` : q.length >= 3 ? html`<div class="hint">Жагсаалтад алга</div>` : null}`}<//>

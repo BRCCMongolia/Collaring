@@ -1,6 +1,6 @@
 // BRCC Collaring — offline service worker. Шинэ хувилбар гаргахдаа VERSION-ийг өөрчилнө.
-const VERSION = "collaring-v0.1.2";
-const FILES = ["./", "./index.html", "./app.js", "./manifest.json", "./vendor/htm-preact.js", "./vendor/admin.js", "./vendor/collars.js",
+const VERSION = "collaring-v0.2.3";
+const FILES = ["./", "./index.html", "./app.js", "./manifest.json", "./vendor/htm-preact.js", "./vendor/admin.js", "./vendor/collars.js", "./vendor/qrcode.js", "./vendor/jsQR.js",
   "./logo-small.png", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k))))); self.clients.claim(); });

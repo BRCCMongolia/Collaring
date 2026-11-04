@@ -53,7 +53,14 @@ h1,h2,h3{margin:0;font-weight:650} h2{font-size:1.15rem} h3{font-size:1.02rem}
 .btn.sm{min-height:40px;padding:6px 12px;font-size:.93rem}
 .btn.block{display:flex;width:100%}
 .btn:disabled{opacity:.45}
-.bigbtn{display:flex;width:100%;min-height:92px;font-size:1.45rem;border-radius:18px;margin:12px 0 6px;box-shadow:0 3px 0 var(--pri-d)}
+.bigbtn{display:flex;width:100%;min-height:84px;font-size:1.4rem;border-radius:18px;margin:4px 0 0;box-shadow:0 3px 0 var(--pri-d);position:relative}
+.bigbtn .stepno{position:absolute;left:14px;top:8px;font-size:.75rem;font-weight:700;opacity:.75}
+.nextbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:linear-gradient(rgba(244,237,225,0),var(--bg) 22%);padding:16px 16px calc(10px + env(safe-area-inset-bottom))}
+.nextbar .in{max-width:728px;margin:0 auto}
+body.night .nextbar{background:linear-gradient(rgba(33,27,21,0),var(--bg) 22%)}
+.page{padding-bottom:150px}
+.missing{background:var(--bad-l);color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px;font-weight:650;font-size:.92rem;margin-bottom:10px}
+.missing span{font-weight:400;opacity:.85}
 .row{display:flex;gap:8px;align-items:center} .row.wrap{flex-wrap:wrap} .row.between{justify-content:space-between} .row>*{min-width:0}
 .mt{margin-top:10px} .mb{margin-bottom:10px} .center{text-align:center}
 .field{margin-bottom:12px} .lbl{display:block;font-size:.88rem;color:var(--muted);font-weight:650;margin-bottom:5px}
@@ -70,6 +77,8 @@ h1,h2,h3{margin:0;font-weight:650} h2{font-size:1.15rem} h3{font-size:1.02rem}
 .sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 8px}
 .group-h{font-size:.85rem;font-weight:700;color:var(--muted);text-transform:none;margin:14px 2px 6px}
 .foot{text-align:center;color:var(--muted);font-size:.9rem;margin:28px 4px 0;line-height:1.5} .foot a{color:var(--pri-d)} .foot p{margin:10px 0 0}
+.qrbox{background:#fff;border-radius:14px;padding:8px;max-width:420px;margin:0 auto} .qrbox svg{display:block;width:100%;height:auto}
+.nophoto{width:84px;height:84px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--muted);text-align:center}
 /* хайдаг сонголт */
 .sp-wrap{position:relative}
 .sp-list{position:absolute;left:0;right:0;top:100%;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 24px rgba(60,35,10,.18);max-height:46vh;overflow:auto;margin-top:4px}
@@ -111,6 +120,8 @@ table.kv{width:100%;border-collapse:collapse;font-size:.95rem} table.kv td{paddi
 <script src="vendor/htm-preact.js"></script>
 <script src="vendor/admin.js"></script>
 <script src="vendor/collars.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="vendor/jsQR.js"></script>
 <script src="app.js"></script>
 <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));</script>
 </body>
