@@ -69,6 +69,12 @@ h1,h2,h3{margin:0;font-weight:650} h2{font-size:1.15rem} h3{font-size:1.02rem}
 .empty{padding:26px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r);background:var(--card)}
 .sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 8px}
 .group-h{font-size:.85rem;font-weight:700;color:var(--muted);text-transform:none;margin:14px 2px 6px}
+.foot{text-align:center;color:var(--muted);font-size:.9rem;margin:28px 4px 0;line-height:1.5} .foot a{color:var(--pri-d)} .foot p{margin:10px 0 0}
+/* хайдаг сонголт */
+.sp-wrap{position:relative}
+.sp-list{position:absolute;left:0;right:0;top:100%;z-index:30;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 24px rgba(60,35,10,.18);max-height:46vh;overflow:auto;margin-top:4px}
+.sp-item{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:12px 14px;font-size:1.02rem;cursor:pointer}
+.sp-item:last-child{border-bottom:0} .sp-item:active,.sp-item.on{background:var(--pri-l);font-weight:650}
 /* timeline */
 .tl{list-style:none;margin:0;padding:0}
 .tl li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--line)}
