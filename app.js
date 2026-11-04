@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.3.1";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -115,7 +115,7 @@ const ChaseTracker = {
   indId: null, watchId: null, kept: [], smooth: [], dist: 0, last: null, level: 0, lastAlarm: 0, tick: null, status: "",
   start(indId) {
     this.stop(); this.indId = indId; const x = S.inds[indId]; const c = x.chase || {};
-    this.kept = []; this.smooth = (c.track || []).map(p => ({ ...p })); this.dist = c.distM || 0; this.level = 0; this.status = "GPS хайж байна…";
+    this.kept = []; this.rej = []; this.smooth = (c.track || []).map(p => ({ ...p })); this.dist = c.distM || 0; this.level = 0; this.status = "GPS хайж байна…";
     if (navigator.geolocation) this.watchId = navigator.geolocation.watchPosition(p => this.onPos(p), e => { this.status = "GPS алдаа: " + (e.message || e.code); emit(); }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
     else this.status = "GPS байхгүй";
     this.tick = setInterval(() => this.check(), 1000); keepAwake(true); emit();
@@ -124,17 +124,28 @@ const ChaseTracker = {
   onPos(p) {
     const pt = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy), t: Date.now() };
     this.last = pt; this.status = `GPS ±${pt.acc} м`;
-    if (pt.acc > setting("gpsMaxAcc")) { this.status += " (муу, тоолсонгүй)"; emit(); return; }
+    if (p.timestamp && Date.now() - p.timestamp > 10000) { emit(); return; } // хуучин (кэшлэгдсэн) байршил
+    if (pt.acc > setting("gpsMaxAcc")) { this.status = "GPS сул байна"; emit(); return; }
     const prev = this.kept[this.kept.length - 1];
+    let jumpReset = false;
     if (prev) {
       const d = haversine(prev, pt), dt = (pt.t - prev.t) / 1000;
       if (dt <= 0) return;
-      if (d / dt * 3.6 > setting("gpsMaxKmh")) { this.status += " (үсрэлт хасав)"; emit(); return; }
-      if (d < Math.max(5, pt.acc)) { emit(); return; }
+      if (d / dt * 3.6 > setting("gpsMaxKmh")) {
+        // Үсрэлт. Гэхдээ дараалсан 3 цэг хоорондоо ойр байвал буруу нь өмнөх цэг байсан гэж үзээд
+        // тэндээс шинээр тоолж эхэлнэ (зайд нэмэхгүй). Ингэснээр км гэнэт үсрэхгүй.
+        this.rej.push(pt);
+        const r = this.rej.slice(-3);
+        if (r.length < 3 || haversine(r[0], r[2]) > Math.max(60, r[2].acc * 3)) { emit(); return; }
+        this.kept = r.slice(0, 2); jumpReset = true;
+      } else if (d < Math.max(5, pt.acc)) { this.rej = []; emit(); return; }
     }
+    this.rej = [];
     this.kept.push(pt); if (this.kept.length > 50) this.kept.shift();
     const k = this.kept.slice(-3); const sp = { lat: +(k.reduce((a, b) => a + b.lat, 0) / k.length).toFixed(6), lng: +(k.reduce((a, b) => a + b.lng, 0) / k.length).toFixed(6), t: pt.t };
-    const ps = this.smooth[this.smooth.length - 1]; if (ps) this.dist += haversine(ps, sp);
+    const ps = this.smooth[this.smooth.length - 1];
+    if (jumpReset || !prev) { if (jumpReset && this.dist === 0) this.smooth = []; } // эхний/дахин тогтоосон цэгээс зай нэмэхгүй
+    else if (ps) this.dist += haversine(ps, sp);
     this.smooth.push(sp);
     if (this.indId && S.inds[this.indId]) updInd(this.indId, x => { x.chase = { track: this.smooth, distM: Math.round(this.dist) }; }, { noSync: true });
   },
@@ -254,6 +265,8 @@ async function addPhoto(id, kind, file) {
   updInd(id, x => { x.photos = [...(x.photos || []), { id: pid, kind, t: Date.now() }]; });
   enqueue("photo", pid, { indId: id, kind });
 }
+const photoKind = p => p.kind === "collar" ? "huzuuvch" : "bodgal";
+function photoName(x, p) { const same = (x.photos || []).filter(q => photoKind(q) === photoKind(p)); return `${fileLabel(x)}_${photoKind(p)}_${same.findIndex(q => q.id === p.id) + 1}.jpg`; }
 function PhotoThumb({ pid }) { const [src, setSrc] = useState(undefined); useEffect(() => { DB.get("photo:" + pid).then(v => setSrc(v || null)); }, [pid]); return src ? html`<img src=${src} alt="" />` : html`<div class="nophoto">${src === null ? "өөр утсанд" : "…"}</div>`; }
 
 /* ---------- Google Sheet руу илгээх ---------- */
@@ -270,7 +283,7 @@ function indRow(x) {
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.injuries || "", "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
-    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "",
+    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
 }
@@ -285,7 +298,7 @@ async function flushQueue() {
     for (const it of q) {
       if (it.kind === "survey" && S.surveys[it.id]) items.push({ kind: "survey", row: surveyRow(S.surveys[it.id]) });
       if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) }); }
-      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: `${fileLabel(x)}_${it.kind === "collar" ? "huzuuvch" : "bodgal"}_${it.id}.jpg`, survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
+      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.kind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
     }
     const body = JSON.stringify({ app: "collaring", items });
     try { await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body }); }
@@ -343,15 +356,17 @@ async function saveFile(name, data, mime) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 function buildSheets(list) {
-  const vit = [], smp = [], trk = [];
+  const vit = [], smp = [], trk = [], pho = [];
   for (const x of list) {
     for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
     for (const a of x.samples || []) smp.push({ "Дээжийн дугаар": a.code, "Төрөл": a.label, "Хүзүүвч / бодгаль": label(x), "Цаг": fmtDT(a.t) });
+    for (const p of x.photos || []) pho.push({ "Файл": photoName(x, p), "Хүзүүвч / бодгаль": label(x), "Төрөл": p.kind === "collar" ? "Хүзүүвч" : "Бодгаль", "Цаг": fmtDT(p.t), "Тэмдэглэл": p.note || "" });
     for (const p of (x.chase && x.chase.track) || []) trk.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(p.t), N: p.lat, E: p.lng });
   }
   const sheets = [{ name: "Бодгаль", rows: toRows(list.map(indRow)) }];
   if (vit.length) sheets.push({ name: "Амин үзүүлэлт", rows: toRows(vit) });
   if (smp.length) sheets.push({ name: "Дээж", rows: toRows(smp) });
+  if (pho.length) sheets.push({ name: "Зураг", rows: toRows(pho) });
   if (trk.length) sheets.push({ name: "Хөөлтийн зам", rows: toRows(trk) });
   return sheets;
 }
@@ -388,7 +403,7 @@ async function exportZip(sid) {
   showToast("ZIP бэлдэж байна…");
   const files = [{ name: base + ".xlsx", data: makeXlsx(buildSheets(list)) }, { name: base + ".kmz", data: makeZip([{ name: "doc.kml", data: buildKml(list, s.name) }]) }];
   let missing = 0;
-  for (const x of list) { const n = {}; for (const p of x.photos || []) { const d = await DB.get("photo:" + p.id); if (!d) { missing++; continue; } const k = p.kind === "collar" ? "huzuuvch" : "bodgal"; n[k] = (n[k] || 0) + 1; files.push({ name: `zurag/${fileLabel(x)}_${k}_${n[k]}.jpg`, data: b64ToBytes(d) }); } }
+  for (const x of list) { for (const p of x.photos || []) { const d = await DB.get("photo:" + p.id); if (!d) { missing++; continue; } files.push({ name: "zurag/" + photoName(x, p), data: b64ToBytes(d) }); } }
   await saveFile(base + ".zip", makeZip(files), "application/zip");
   if (missing) showToast(`${missing} зураг өөр утсанд байгаа тул ZIP-д ороогүй`);
 }
@@ -409,7 +424,7 @@ async function unpackData(s) {
 }
 function transferPayload(scope) { // scope: {surveyId} | {indId} | null (бүгд)
   const thin = tr => { if (!tr || tr.length <= 150) return tr; const st = tr.length / 150; const o = []; for (let i = 0; i < tr.length; i += st) o.push(tr[Math.floor(i)]); o.push(tr[tr.length - 1]); return o; }; // QR-д зориулж замыг 150 цэг болгоно (зай нь хадгалагдсан)
-  const strip = x => ({ ...x, chase: x.chase ? { ...x.chase, track: thin(x.chase.track) } : x.chase, photos: (x.photos || []).map(p => ({ id: p.id, kind: p.kind, t: p.t })) });
+  const strip = x => ({ ...x, chase: x.chase ? { ...x.chase, track: thin(x.chase.track) } : x.chase, photos: (x.photos || []).map(p => ({ id: p.id, kind: p.kind, t: p.t, note: p.note })) });
   let inds = Object.values(S.inds).filter(x => !x.deletedAt && S.surveys[x.surveyId] && !S.surveys[x.surveyId].deletedAt);
   if (scope && scope.surveyId) inds = inds.filter(x => x.surveyId === scope.surveyId);
   if (scope && scope.indId) inds = inds.filter(x => x.id === scope.indId);
@@ -518,7 +533,7 @@ const TextIn = ({ val, on, ph, area, type = "text", mode }) => area
 const OWNER_TEXT = "BRCC Collaring апп нь Биологийн Нөөцийг Хамгаалах Төвийн өмч бөгөөд төвийн судлаачдын зэрлэг амьтан барих, хүзүүвчлэх ажлын өгөгдөл цуглуулахад зориулагдсан. Зөвшөөрөлгүй хувилах, тараах, бусад зорилгоор ашиглахыг хориглоно. © Биологийн Нөөцийг Хамгаалах Төв, 2026.";
 function Footer() {
   const n = Object.values(S.surveys).filter(x => x.deletedAt).length + Object.values(S.inds).filter(x => x.deletedAt).length;
-  return html`<div class="foot"><div><a href="#/trash">Хогийн сав (${n})</a> · <a href="#/about">Тухай</a></div><p>${OWNER_TEXT}</p></div>`;
+  return html`<div class="foot"><div><a href="#/trash">Хогийн сав (${n})</a> · <a href="#/about">Тухай</a></div><p>${OWNER_TEXT}</p><p style="opacity:.7">Хувилбар ${APP_VERSION}</p></div>`;
 }
 function AboutView() {
   return html`<div class="page"><${TopBar} title="Тухай" back="#/" />
@@ -763,7 +778,8 @@ function VetPanel({ x }) {
 }
 
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
-const Thumbs = ({ x, k }) => { const ps = (x.photos || []).filter(p => (p.kind || "animal") === k); return ps.length ? html`<div class="photos mt">${ps.map(p => html`<${PhotoThumb} key=${p.id} pid=${p.id} />`)}</div>` : null; };
+const setPhotoNote = (x, pid, note) => { updInd(x.id, y => { const p = (y.photos || []).find(q => q.id === pid); if (p) p.note = note; }); enqueue("photo", pid, { indId: x.id, kind: ((x.photos || []).find(q => q.id === pid) || {}).kind }); };
+const Thumbs = ({ x, k }) => { const ps = (x.photos || []).filter(p => (p.kind || "animal") === k); return ps.length ? html`<div class="phlist mt">${ps.map(p => html`<div class="ph" key=${p.id}><${PhotoThumb} pid=${p.id} /><div class="grow"><div class="phname">${photoName(x, p)}</div><${TextIn} val=${p.note} on=${val => setPhotoNote(x, p.id, val)} ph="Зургийн тэмдэглэл" /></div></div>`)}</div>` : null; };
 
 function CollarPanel({ x, compact }) {
   const [q, setQ] = useState(""); const used = usedCollars(x.id);
@@ -781,7 +797,7 @@ function CollarPanel({ x, compact }) {
     <div class="field"><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /></div>
     <${Field} label="Хүйс"><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
     <${Field} label="Нас (жил)"><input class="inp" inputmode="decimal" placeholder="ж: 4" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
-    ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<${Field} label="Өсөлтийн тэмдэглэл" hint="Хүзүү нь өсөж байгаа залуу хуланд өсөлтийг тооцно (удирдамж 6.5)"><${TextIn} val=${x.ageNote} on=${val => u("ageNote", val)} /><//>`}
+    ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<label class="check"><input type="checkbox" checked=${!!x.growth} onChange=${e => u("growth", e.target.checked)} /> Өсөлтийг тооцсон</label><div class="hint" style="margin:-6px 0 12px">Залуу хуланд хүзүүвчийг өсөлтийн зайтай зүүнэ (удирдамж 6.5)</div>`}
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
     <${Field} label="Онцлох зан төрх"><${TextIn} val=${x.behaviour} on=${val => u("behaviour", val)} /><//>
     <label class="check"><input type="checkbox" checked=${!!x.trd} onChange=${e => u("trd", e.target.checked)} /> TRD соронз авсан</label>
