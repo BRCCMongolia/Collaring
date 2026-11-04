@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.1.1";
+const APP_VERSION = "0.1.2";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -28,7 +28,6 @@ const SIDE = { postDart: [["down", "Унасан"], ["recumbent", "Хэвтсэ�
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
-const AGE = ["Насанд хүрсэн", "Залуу", "Бага нас"];
 const REPRO = ["Хээлтэй", "Хөхүүл", "Хээлгүй / хөхүүлгүй", "Тодорхойгүй"];
 const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
@@ -212,7 +211,8 @@ function metrics(x) {
     total: diff(first, st(x, "monEnd")),
   };
 }
-const label = x => x.collarId ? x.collarId : `Бодгаль ${x.no}`;
+const label = x => x.collarId ? `Бодгаль ${x.no} · ${x.collarId}` : `Бодгаль ${x.no}`;
+const fileLabel = x => x.collarId || `bodgal${x.no}`;
 function statusTag(x) {
   if (x.status === "aborted") return html`<span class="tag mut">Хөөлт зогсоосон</span>`;
   if (x.vet && x.vet.ok === false) return html`<span class="tag bad">Хүзүүвчлээгүй</span>`;
@@ -264,7 +264,7 @@ async function flushQueue() {
     for (const it of q) {
       if (it.kind === "survey" && S.surveys[it.id]) items.push({ kind: "survey", row: surveyRow(S.surveys[it.id]) });
       if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) }); }
-      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: `${label(x)}_${it.kind === "collar" ? "huzuuvch" : "bodgal"}_${it.id}.jpg`, survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
+      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: `${fileLabel(x)}_${it.kind === "collar" ? "huzuuvch" : "bodgal"}_${it.id}.jpg`, survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
     }
     const body = JSON.stringify({ app: "collaring", items });
     try { await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body }); }
@@ -343,6 +343,7 @@ async function importBackup(file) {
 }
 
 /* ---------- UI туслахууд ---------- */
+const confirmAll = msgs => msgs.every(m => confirm(m)); // хэд хэдэн удаа асууж баталгаажуулна
 let toastT = null;
 function showToast(msg) { S.toast = msg; emit(); clearTimeout(toastT); toastT = setTimeout(() => { S.toast = null; emit(); }, 2600); }
 const go = h => { location.hash = h; };
@@ -411,12 +412,12 @@ function SurveyView({ id }) {
       aimag: prev.aimag || "", soum: prev.soum || "", place: prev.place || "", habitat: prev.habitat || "", airTemp: prev.airTemp ?? "", weather: prev.weather || "" };
     persist("inds"); enqueue("ind", iid); emit(); go("#/i/" + iid);
   };
-  const del = () => { if (confirm("Судалгааг устгах уу? (Хогийн саванд 30 хоног хадгалагдана)")) { updSurvey(id, x => { x.deletedAt = Date.now(); }); go("#/"); } };
+  const del = () => { if (confirmAll([`«${s.name}» судалгааг устгах уу?`, `Доторх ${list.length} бодгаль цуг харагдахгүй болно. Үргэлжлүүлэх үү?`, "Сүүлийн удаа асууж байна: үнэхээр устгах уу? (Хогийн саванд 30 хоног хадгалагдана)"])) { updSurvey(id, x => { x.deletedAt = Date.now(); }); go("#/"); } };
   return html`<div class="page">
     <${TopBar} title=${s.name} sub=${`${s.species} · ${list.length} бодгаль`} back="#/" right=${html`<button class="iconbtn" aria-label="Засах" onClick=${() => setEdit(true)}>✎</button>`} />
     <button class="btn pri block" onClick=${newInd}>+ Шинэ бодгаль</button>
     ${list.length ? Object.entries(groups).map(([g, xs]) => html`<div class="group-h">📍 ${g}</div>${xs.map(x => html`<button class=${"card link" + (x.status === "done" ? " done" : x.status === "aborted" ? " abort" : "")} onClick=${() => go("#/i/" + x.id)}>
-        <div class="ct">${label(x)} ${statusTag(x)}</div><div class="cs">№${x.no} · ${[x.sex, x.age].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
+        <div class="ct">${label(x)} ${statusTag(x)}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
       : html`<div class="empty mt">Бодгаль алга. Амьтан харагдмагц «+ Шинэ бодгаль» дарна.</div>`}
     <div class="card mt"><table class="kv"><tbody>
       <tr><td>Баг</td><td>${(s.team || []).map(m => html`<div>${m.name} <span class="muted small">· ${m.role}</span></div>`)}</td></tr>
@@ -437,7 +438,7 @@ function IndView({ id }) {
   const next = ci >= 0 ? STEPS[ci] : null;
   const blocked = next && next.k === "collarStart" && x.vet && x.vet.ok !== true; // эмч OK гэж хэлэхээс өмнө хүзүүвчлэхгүй
   const startFrom = i => { updInd(id, y => { for (let j = 0; j < i; j++) y.steps[STEPS[j].k] = { skipped: true, reason: "start" }; }); setStartPick(false); pressStep(id, STEPS[i].k); };
-  const del = () => { if (confirm("Энэ бодгалийг устгах уу? (Хогийн саванд 30 хоног хадгалагдана)")) { if (ChaseTracker.indId === id) ChaseTracker.stop(); updInd(id, y => { y.deletedAt = Date.now(); }); go("#/s/" + x.surveyId); } };
+  const del = () => { if (confirmAll([`${label(x)} бодгалийг устгах уу?`, "Үнэхээр устгах уу? (Хогийн саванд 30 хоног хадгалагдана)"])) { if (ChaseTracker.indId === id) ChaseTracker.stop(); updInd(id, y => { y.deletedAt = Date.now(); }); go("#/s/" + x.surveyId); } };
   const m = metrics(x);
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
@@ -487,14 +488,27 @@ function EditTime({ x, k, onClose }) {
   return html`<${Modal} title=${"Цаг засах: " + STEPS[STEP_IDX[k]].s} onClose=${onClose}><input class="inp" type="time" step="1" value=${v} onInput=${e => setV(e.target.value)} /><button class="btn pri block mt" onClick=${save}>Хадгалах</button><//>`;
 }
 
+// Бичиж хайдаг сонголт: "Өм" гэхэд Өмнөговь гарна
+const normMn = s => (s || "").toLowerCase().replace(/ё/g, "е");
+function SearchPick({ val, opts, on, ph }) {
+  const [q, setQ] = useState(null);
+  const n = normMn(q);
+  const list = q === null ? [] : opts.filter(o => normMn(o).includes(n)).sort((a, b) => (normMn(a).startsWith(n) ? 0 : 1) - (normMn(b).startsWith(n) ? 0 : 1) || a.localeCompare(b, "mn")).slice(0, 40);
+  const pick = (o, el) => { on(o); setQ(null); if (el) el.blur(); };
+  return html`<div class="sp-wrap"><input class="inp" placeholder=${ph || ""} value=${q === null ? (val || "") : q} onFocus=${() => setQ("")} onInput=${e => setQ(e.target.value)} onBlur=${() => setTimeout(() => setQ(null), 250)}
+      onKeyDown=${e => { if (e.key === "Enter" && list[0]) { e.preventDefault(); pick(list[0], e.target); } }} />
+    ${q !== null && list.length ? html`<div class="sp-list">${list.map(o => html`<button type="button" class=${"sp-item" + (o === val ? " on" : "")} onPointerDown=${e => e.preventDefault()} onClick=${e => pick(o, e.target.closest(".sp-wrap").querySelector("input"))}>${o}</button>`)}</div>` : null}
+  </div>`;
+}
+
 function PlaceCard({ x }) {
   const soums = (typeof ADMIN !== "undefined" && ADMIN[x.aimag]) || [];
   const t = x.airTemp === "" || x.airTemp == null ? null : +x.airTemp; const bad = t != null && !isNaN(t) && (t < setting("tempMin") || t > setting("tempMax"));
   const u = (k, v) => updInd(x.id, y => { y[k] = v; });
   return html`<div class="card"><h3 class="mb">Байршил, нөхцөл</h3>
     <div class="grid2">
-      <${Field} label="Аймаг"><select class="inp" value=${x.aimag} onChange=${e => updInd(x.id, y => { y.aimag = e.target.value; y.soum = ""; })}><option value="">—</option>${(typeof AIMAGS !== "undefined" ? AIMAGS : []).map(a => html`<option value=${a}>${a}</option>`)}</select><//>
-      <${Field} label="Сум"><select class="inp" value=${x.soum} onChange=${e => u("soum", e.target.value)}><option value="">—</option>${soums.map(a => html`<option value=${a}>${a}</option>`)}</select><//>
+      <${Field} label="Аймаг"><${SearchPick} val=${x.aimag} opts=${typeof AIMAGS !== "undefined" ? AIMAGS : []} on=${v => updInd(x.id, y => { if (y.aimag !== v) y.soum = ""; y.aimag = v; })} ph="Өм…" /><//>
+      <${Field} label="Сум"><${SearchPick} val=${x.soum} opts=${soums.length ? soums : Object.values(typeof ADMIN !== "undefined" ? ADMIN : {}).flat()} on=${v => updInd(x.id, y => { y.soum = v; if (!y.aimag && typeof ADMIN !== "undefined") { const a = Object.keys(ADMIN).find(k => ADMIN[k].includes(v)); if (a) y.aimag = a; } })} ph="Бичиж хайх…" /><//>
     </div>
     <${Field} label="Газрын нэр" hint="Дараагийн бодгальд автоматаар хуулагдана"><${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
     <${Field} label="Амьдрах орчин"><${TextIn} val=${x.habitat} on=${v => u("habitat", v)} ph="ж: хялгана-хиаглаг тал" /><//>
@@ -557,6 +571,9 @@ function VetPanel({ x }) {
   </div>`;
 }
 
+const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
+const Thumbs = ({ x, k }) => { const ps = (x.photos || []).filter(p => (p.kind || "animal") === k); return ps.length ? html`<div class="photos mt">${ps.map(p => html`<${PhotoThumb} key=${p.id} pid=${p.id} />`)}</div>` : null; };
+
 function CollarPanel({ x, compact }) {
   const [q, setQ] = useState(""); const used = usedCollars(x.id);
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
@@ -570,9 +587,10 @@ function CollarPanel({ x, compact }) {
       ${x.collarId ? html`<div class="row"><div class="grow" style="font-size:1.6rem;font-weight:750">${x.collarId}</div><button class="btn ghost sm" onClick=${() => updInd(x.id, y => { y.collarId = ""; y.imei = ""; })}>Солих</button></div>`
         : html`<input class="inp" inputmode="numeric" placeholder="808" value=${q} onInput=${e => setQ(e.target.value.replace(/\D/g, ""))} />
           ${matches.length ? html`<div class="chips mt">${matches.slice(0, 8).map(c => html`<button class="chip" onClick=${() => pick(c)}>${c.id}${used.has(c.id) ? " (ашигласан)" : ""}</button>`)}</div>` : q.length >= 3 ? html`<div class="hint">Жагсаалтад алга</div>` : null}`}<//>
+    <div class="field"><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /></div>
     <${Field} label="Хүйс"><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
-    <${Field} label="Нас"><${Chips} opts=${AGE} val=${x.age} on=${val => u("age", val)} /><//>
-    ${x.age === "Бага нас" && html`<${Field} label="Өсөлтийн тэмдэглэл" hint="Хүзүү нь өсөж байгаа залуу хуланд өсөлтийг тооцно (удирдамж 6.5)"><${TextIn} val=${x.ageNote} on=${val => u("ageNote", val)} /><//>`}
+    <${Field} label="Нас (жил)"><input class="inp" inputmode="decimal" placeholder="ж: 4" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
+    ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<${Field} label="Өсөлтийн тэмдэглэл" hint="Хүзүү нь өсөж байгаа залуу хуланд өсөлтийг тооцно (удирдамж 6.5)"><${TextIn} val=${x.ageNote} on=${val => u("ageNote", val)} /><//>`}
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
     <${Field} label="Онцлох зан төрх"><${TextIn} val=${x.behaviour} on=${val => u("behaviour", val)} /><//>
     <label class="check"><input type="checkbox" checked=${!!x.trd} onChange=${e => u("trd", e.target.checked)} /> TRD соронз авсан</label>
@@ -580,9 +598,7 @@ function CollarPanel({ x, compact }) {
     <${Field} label="Дээж">
       <div class="chips">${SAMPLE_TYPES.map(([c, l]) => html`<button class="chip" onClick=${() => addSample(c, l)}>+ ${l}</button>`)}</div>
       ${(x.samples || []).map((a, i) => html`<div class="sample"><span>${a.code}</span><button class="iconbtn" style="height:32px" aria-label="Хасах" onClick=${() => { if (confirm(a.code + " дээжийг хасах уу?")) updInd(x.id, y => { y.samples.splice(i, 1); }); }}>✕</button></div>`)}<//>
-    <${Field} label="Зураг">
-      <div class="row wrap">${[["collar", "📷 Хүзүүвчний зураг"], ["animal", "📷 Бодгалийн зураг"]].map(([k, l]) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`)}</div>
-      <div class="photos mt">${(x.photos || []).map(p => html`<${PhotoThumb} key=${p.id} pid=${p.id} />`)}</div><//>
+    <${Field} label="Бодгалийн зураг"><${PhotoBtn} x=${x} k="animal" l="📷 Бодгалийн зураг" /><${Thumbs} x=${x} k="animal" /><//>
   </div>`;
 }
 
