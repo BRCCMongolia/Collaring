@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.2.3";
+const APP_VERSION = "0.3.0";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -22,6 +22,8 @@ const STEPS = [
   { k: "antidote", b: "Сэргээх тариа хийлээ", s: "Сэргээх тариа (хяналт эхэлсэн)" },
   { k: "monEnd", b: "Хяналт дууслаа", s: "Хяналт дууссан" },
 ];
+const STEP_ICON = { chaseStart: "▶", dart: "🎯", vet: "🩺", collarStart: "📡", collarEnd: "✔", antidote: "💉", monEnd: "🏁" };
+const STEP_SUB = { chaseStart: "секундомер + GPS зай", dart: "хөөлт зогсоно, хяналт эхэлнэ", vet: "үзлэг дуусмагц OK дарна", collarStart: "хүзүүвчлэх таймер эхэлнэ", collarEnd: "дараа нь сэргээх тариа", antidote: "сэргэлтийн хяналт эхэлнэ", monEnd: "бодгаль хаагдана" };
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
 const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
@@ -69,7 +71,7 @@ async function loadAll() {
   for (const [id, x] of Object.entries(S.surveys)) if (x.deletedAt && x.deletedAt < lim) delete S.surveys[id];
   // v0.1 → v0.2: «Буудсаны дараах хяналт», «Хяналт эхэллээ» алхам хасагдаж, «Сэргээх тариа» нэмэгдсэн
   for (const x of Object.values(S.inds)) { if (x.steps.monStart && !x.steps.antidote) x.steps.antidote = x.steps.monStart; delete x.steps.monStart; delete x.steps.postDart; }
-  S.ready = true; document.body.classList.toggle("night", !!S.settings.night); emit();
+  S.ready = true; document.body.classList.toggle("night", !!S.settings.night); document.body.classList.toggle("big", !!S.settings.big); emit();
   ChaseTracker.resume(); setTimeout(flushQueue, 2000);
 }
 function useStore() { const [, f] = useState(0); useEffect(() => { const cb = () => f(x => x + 1); subs.add(cb); if (S.ready) cb(); return () => subs.delete(cb); }, []); return S; } // ачаалал дуусчихсан бол шууд дахин зурна (эс бөгөөс «Ачаалж байна»-д гацдаг)
@@ -150,8 +152,11 @@ const ChaseTracker = {
 
 /* ---------- алхам бүртгэх ---------- */
 const curStep = x => STEPS.findIndex(s => !x.steps[s.k]);
+let lastPress = 0;
 async function pressStep(id, k) {
   const t = Date.now();
+  if (t - lastPress < 1500) return; // бээлийтэй, сэгсэрч яваа машинд санамсаргүй давхар дарахаас хамгаална
+  lastPress = t;
   updInd(id, x => { x.steps[k] = { t }; if (k === "monEnd") x.status = "done"; });
   if (k === "chaseStart") { ChaseTracker.start(id); }
   if (k === "dart" && ChaseTracker.indId === id) { const f = lastFix(); ChaseTracker.stop(); if (f) updInd(id, x => Object.assign(x.steps.dart, f)); }
@@ -532,7 +537,7 @@ function Home() {
   const [show, setShow] = useState(false), [scan, setScan] = useState(false), [qr, setQr] = useState(false); useStore();
   const list = liveSurveys();
   return html`<div class="page">
-    <${TopBar} title="BRCC Collaring" sub="Зэрлэг амьтан барих, хүзүүвчлэх бүртгэл" right=${html`<button class="iconbtn" aria-label="Тохиргоо" onClick=${() => go("#/settings")}>⚙</button>`} />
+    <${TopBar} title="BRCC Collaring" sub="Зэрлэг амьтан барих, хүзүүвчлэх бүртгэл" right=${html`<button class="iconbtn" style="font-size:1.1rem;font-weight:800" aria-label="Том үсэг" onClick=${() => { S.settings = { ...S.settings, big: !S.settings.big }; persist("settings"); document.body.classList.toggle("big", !!S.settings.big); emit(); }}>Aa</button><button class="iconbtn" aria-label="Тохиргоо" onClick=${() => go("#/settings")}>⚙</button>`} />
     <img class="logo-lg" src="logo-small.png" alt="BRCC" />
     <div class="hero"><h1>BRCC Collaring</h1><p>Зэрлэг амьтан барих, хүзүүвчлэх бүртгэл</p></div>
     <button class="btn pri block" onClick=${() => setShow(true)}>+ Шинэ судалгаа</button>
@@ -540,7 +545,7 @@ function Home() {
     ${list.length ? list.map(s => { const n = indsOf(s.id); const c = n.filter(x => x.collarId && x.steps.collarEnd && !x.steps.collarEnd.skipped).length;
       return html`<button class="card link" onClick=${() => go("#/s/" + s.id)}><div class="ct">${s.name}<span class="tag">${s.species}</span></div><div class="cs">${n.length} бодгаль · ${c} хүзүүвчилсэн · ${fmtDate(s.createdAt)}</div></button>`; })
       : html`<div class="empty">Судалгаа алга. «+ Шинэ судалгаа» дарж эхлээрэй.</div>`}
-    <div class="row mt"><button class="btn ghost" style="flex:1" onClick=${() => setScan(true)}>📷 QR уншуулах</button><button class="btn ghost" style="flex:1" onClick=${() => setQr(true)}>▦ QR үзүүлэх</button></div>
+    <div class="sec-h"><h2>QR дамжуулалт</h2></div><div class="row"><button class="btn ghost" style="flex:1" onClick=${() => setScan(true)}>📷 Уншуулах</button><button class="btn ghost" style="flex:1" onClick=${() => setQr(true)}>▦ Үзүүлэх</button></div>
     <p class="hint">Бусад утасны өгөгдлийг өөрийн утсанд цуглуулах: тэр утсан дээр «QR үзүүлэх», энэ утсан дээр «QR уншуулах».</p>
     <${Footer} />
     ${show && html`<${SurveyModal} onClose=${() => setShow(false)} />`}
@@ -637,7 +642,7 @@ function IndView({ id }) {
       <div class="nextbar"><div class="in">
         ${vetBlock && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
         ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
-        <button class=${"btn pri bigbtn" + (next.k === "dart" && ChaseTracker.level === 2 ? " badb" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span>${next.b}</button>
+        <button class=${"btn pri bigbtn" + (next.k === "chaseStart" ? " go" : next.k === "dart" ? " shoot" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span><span class="ico">${STEP_ICON[next.k]}</span>${next.b}<span class="sub">${STEP_SUB[next.k]}</span></button>
       </div></div>
     </div>`}
 
@@ -799,7 +804,7 @@ function FinishPanel({ x }) {
 
 /* ---------- Тохиргоо, хогийн сав ---------- */
 function SettingsView() {
-  useStore(); const st2 = S.settings; const u = (k, v) => { S.settings = { ...S.settings, [k]: v }; persist("settings"); if (k === "night") document.body.classList.toggle("night", !!v); emit(); };
+  useStore(); const st2 = S.settings; const u = (k, v) => { S.settings = { ...S.settings, [k]: v }; persist("settings"); if (k === "night") document.body.classList.toggle("night", !!v); if (k === "big") document.body.classList.toggle("big", !!v); emit(); };
   const numF = (k, l) => html`<${Field} label=${l}><input class="inp" inputmode="decimal" value=${st2[k] ?? DEFAULTS[k]} onInput=${e => u(k, e.target.value === "" ? DEFAULTS[k] : +e.target.value)} /><//>`;
   return html`<div class="page"><${TopBar} title="Тохиргоо" back="#/" />
     <div class="card"><h3 class="mb">Google Sheet</h3>
@@ -809,8 +814,10 @@ function SettingsView() {
       <div class="grid2">${numF("chaseWarnMin", "Анхааруулах (мин)")}${numF("chaseStopMin", "Зогсоох (мин)")}${numF("chaseWarnKm", "Анхааруулах (км)")}${numF("chaseStopKm", "Зогсоох (км)")}</div>
       <div class="grid2">${numF("handleMin", "Хүзүүвчлэх зорилт (мин)")}${numF("gpsMaxAcc", "GPS нарийвчлалын босго (м)")}</div>
       <div class="grid2">${numF("tempMin", "Агаарын хэм доод (°C)")}${numF("tempMax", "Агаарын хэм дээд (°C)")}</div>
-      <button class="btn ghost sm" onClick=${() => beep(3)}>🔊 Дохио турших</button></div>
-    <div class="card"><label class="check"><input type="checkbox" checked=${!!st2.night} onChange=${e => u("night", e.target.checked)} /> Шөнийн горим (бараан)</label></div>
+      <button class="btn ghost sm" onClick=${() => beep(3)}>🔊 Дохио турших</button>
+      <p class="hint">iPhone: хажуугийн чимээгүй (silent) товчийг унтраасан байх, дууг чангалах. iPhone дээр чичиргээ ажиллахгүй тул дэлгэц улаанаар анивчина. Дэлгэц унтахгүйн тулд Settings → Display → Auto-Lock → Never.</p></div>
+    <div class="card"><label class="check"><input type="checkbox" checked=${!!st2.big} onChange=${e => u("big", e.target.checked)} /> Том үсэг (нүд муутай хүнд)</label>
+      <label class="check"><input type="checkbox" checked=${!!st2.night} onChange=${e => u("night", e.target.checked)} /> Шөнийн горим (бараан дэвсгэр)</label></div>
     <div class="card"><h3 class="mb">Өгөгдөл</h3><div class="row wrap">
       <button class="btn ghost sm" onClick=${() => exportSurvey(null)}>⬇ Бүх өгөгдөл (Excel)</button>
       <button class="btn ghost sm" onClick=${exportBackup}>Нөөцлөх (файл)</button>
