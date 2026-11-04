@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.8";
+const APP_VERSION = "0.4.9";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -322,7 +322,7 @@ async function flushQueue() {
       if (it.kind === "ind" && S.inds[it.id]) { items.push({ kind: "ind", row: indRow(S.inds[it.id]) }); const x = S.inds[it.id]; if (x.chase && x.chase.track && x.chase.track.length > 1) items.push({ kind: "track", id: x.id, name: label(x), points: x.chase.track.map(p => [p.lat, p.lng, fmtHM(p.t)]) });
         // Амин үзүүлэлт, дээжийг тусдаа хуудсанд (бодгалийн id-аар дахин бичнэ)
         const bs = buildSheets([x]); for (const n of ["Амин үзүүлэлт", "Дээж"]) { const sh = bs.find(b => b.name === n); items.push({ kind: "rows", sheet: n, id: x.id, header: sh ? sh.rows[0] : [], rows: sh ? sh.rows.slice(1) : [] }); } }
-      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (data && x) items.push({ kind: "photo", id: it.id, ind: x.id, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.pkind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data }); }
+      if (it.kind === "photo") { const data = await DB.get("photo:" + it.id); const x = S.inds[it.indId]; if (x && (data || it.meta)) items.push({ kind: "photo", id: it.id, ind: x.id, meta: !!it.meta, name: photoName(x, (x.photos || []).find(p => p.id === it.id) || { id: it.id, kind: it.pkind }), note: ((x.photos || []).find(p => p.id === it.id) || {}).note || "", survey: (S.surveys[x.surveyId] || {}).name || "", data: it.meta ? "" : data }); }
     }
     const body = JSON.stringify({ app: "collaring", items });
     try { await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body }); }
@@ -472,7 +472,7 @@ function mergeIncoming(d) {
       const same = Object.values(S.inds).filter(z => z.surveyId === y.surveyId && z.id !== y.id);
       if (same.some(z => z.no === y.no)) y.no = same.reduce((a, z) => Math.max(a, z.no || 0), 0) + 1;
       S.inds[x.id] = y; ni++; lastId = x.id; enqueue("ind", x.id); }
-    else if ((cur.updatedAt || 0) < (y.updatedAt || 0)) { S.inds[x.id] = y; nu++; lastId = x.id; enqueue("ind", x.id); }
+    else if ((cur.updatedAt || 0) < (y.updatedAt || 0)) { if (Object.values(S.inds).some(z => z.surveyId === y.surveyId && z.id !== y.id && z.no === y.no)) y.no = cur.no; S.inds[x.id] = y; nu++; lastId = x.id; enqueue("ind", x.id); }
   }
   // нэг хүзүүвч хоёр өөр бодгальд бүртгэгдсэн эсэх
   const seen = {}, dup = new Set(); Object.values(S.inds).filter(x => !x.deletedAt && x.collarId).forEach(x => { if (seen[x.collarId]) dup.add(x.collarId); seen[x.collarId] = 1; });
@@ -752,7 +752,7 @@ function PlaceCard({ x }) {
     </div>
     <${Field} label="Газрын нэр" miss=${isMiss(x, "газрын нэр")} hint="Дараагийн бодгальд автоматаар хуулагдана">${(() => { const ps = [...new Set(indsOf(x.surveyId).map(i => i.place).filter(Boolean))].filter(p => p !== x.place).slice(-6); return ps.length ? html`<div class="chips mb">${ps.map(p => html`<button type="button" class="chip" onClick=${() => u("place", p)}>${p}</button>`)}</div>` : null; })()}<${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
     <${Field} label="Амьдрах орчин"><${QuickText} val=${x.habitat} on=${v => u("habitat", v)} opts=${HABITAT} /><//>
-    <div class="grid2"><${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v)} type="text" mode="decimal" /><//><div></div></div>
+    <div class="grid2"><${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v.replace(",", "."))} type="text" mode="decimal" /><//><div class="field"><label class="lbl">&nbsp;</label><button type="button" class="btn ghost" style="width:100%" onClick=${() => { const v = String(x.airTemp ?? "").trim(); u("airTemp", v.startsWith("-") ? v.slice(1) : "-" + v); }}>− хасах / + нэмэх</button></div></div>
     <${Field} label="Цаг агаар"><${QuickText} val=${x.weather} on=${v => u("weather", v)} opts=${WEATHER} /><//>
     ${bad && html`<div class="panel warn">⚠ Агаарын хэм ${setting("tempMin")}–${setting("tempMax")} °C-ээс гадуур байна. Барилт хийхгүй (CPORT, JHA).</div>`}
   </div>`;
@@ -821,16 +821,18 @@ function VetPanel({ x }) {
 }
 
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
-const setPhotoNote = (x, pid, note) => { updInd(x.id, y => { const p = (y.photos || []).find(q => q.id === pid); if (p) p.note = note; }); enqueue("photo", pid, { indId: x.id, pkind: ((x.photos || []).find(q => q.id === pid) || {}).kind }); };
+// Зургийн тэмдэглэл, нэр өөрчлөгдөхөд зургийг дахин илгээхгүй, зөвхөн мэдээллийг шинэчилнэ (meta)
+function queuePhoto(indId, p, meta) { const q = S.queue.find(i => i.kind === "photo" && i.id === p.id); const m = meta && !(q && !q.meta) && !!(S.settings.sentPhotos || {})[p.id]; enqueue("photo", p.id, { indId, pkind: p.kind, meta: m || undefined }); }
+const setPhotoNote = (x, pid, note) => { updInd(x.id, y => { const p = (y.photos || []).find(q => q.id === pid); if (p) p.note = note; }); const p = (S.inds[x.id].photos || []).find(q => q.id === pid); if (p) queuePhoto(x.id, p, true); };
 const Thumbs = ({ x, k }) => { const ps = (x.photos || []).filter(p => (p.kind || "animal") === k); return ps.length ? html`<div class="phlist mt">${ps.map(p => html`<div class="ph" key=${p.id}><${PhotoThumb} pid=${p.id} /><div class="grow"><div class="phname">${photoName(x, p)}</div><${TextIn} val=${p.note} on=${val => setPhotoNote(x, p.id, val)} ph="Зургийн тэмдэглэл" /></div></div>`)}</div>` : null; };
 
 function CollarPanel({ x, compact }) {
   const [q, setQ] = useState(""); const used = usedCollars(x.id);
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
   const matches = q ? COLLARS.filter(c => c.id.endsWith(q) || c.id === q) : [];
-  const pick = c => { updInd(x.id, y => { y.collarId = c.id; y.imei = c.imei; const pre = `${y.no}-`; (y.samples || []).forEach(a => { if (a.code.startsWith(pre)) a.code = c.id.slice(-3) + "-" + a.code.slice(pre.length); }); }); setQ(""); if (used.has(c.id)) showToast("Анхаар: энэ хүзүүвч өөр бодгальд бүртгэлтэй байна"); };
+  const pick = c => { updInd(x.id, y => { y.collarId = c.id; y.imei = c.imei; const sh = c.id.slice(-3); (y.samples || []).forEach(a => { const i = a.code.indexOf("-"); if (i > 0) a.code = sh + a.code.slice(i); }); }); (S.inds[x.id].photos || []).forEach(p => queuePhoto(x.id, p, true)); setQ(""); if (used.has(c.id)) showToast("Анхаар: энэ хүзүүвч өөр бодгальд бүртгэлтэй байна"); };
   const short = x.collarId ? x.collarId.slice(-3) : String(x.no);
-  const addSample = (code, l) => updInd(x.id, y => { const n = (y.samples || []).filter(a => a.type === code).length + 1; y.samples = [...(y.samples || []), { code: `${short}-${code}-${n}`, type: code, label: l, t: Date.now() }]; });
+  const addSample = (code, l) => updInd(x.id, y => { const n = (y.samples || []).filter(a => a.type === code).reduce((m, a) => Math.max(m, +a.code.split("-").pop() || 0), 0) + 1; y.samples = [...(y.samples || []), { code: `${short}-${code}-${n}`, type: code, label: l, t: Date.now() }]; });
   const free = COLLARS.filter(c => !used.has(c.id));
   return html`<div class="card"><h3 class="mb">${compact ? "Хүзүүвч, бодгалийн мэдээлэл" : "Хүзүүвчлэх"}</h3>
     <${Field} label="Хүзүүвчний дугаар *" miss=${isMiss(x, "хүзүүвчний дугаар")} hint=${x.collarId ? `IMEI ${x.imei}` : `Сүүлийн 3 оронг бичнэ (ж: 808). Үлдсэн ${free.length} хүзүүвч.`}>
@@ -879,7 +881,7 @@ function resendAll() {
 }
 function SettingsView() {
   useStore(); const st2 = S.settings; const u = (k, v) => { S.settings = { ...S.settings, [k]: v }; persist("settings"); if (k === "night") document.body.classList.toggle("night", !!v); if (k === "big") document.body.classList.toggle("big", !!v); emit(); };
-  const numF = (k, l) => html`<${Field} label=${l}><input class="inp" inputmode="decimal" value=${st2[k] ?? DEFAULTS[k]} onInput=${e => u(k, e.target.value === "" ? DEFAULTS[k] : +e.target.value)} /><//>`;
+  const numF = (k, l) => html`<${Field} label=${l}><input class="inp" inputmode="decimal" value=${st2[k] ?? DEFAULTS[k]} onInput=${e => { const n = +e.target.value.replace(",", "."); u(k, e.target.value === "" || isNaN(n) ? DEFAULTS[k] : n); }} /><//>`;
   return html`<div class="page"><${TopBar} title="Тохиргоо" back="#/" />
     <div class="card"><h3 class="mb">Google Sheet</h3>
       <${Field} label="Apps Script холбоос" hint="README-ийн зааврын дагуу Google Sheet дээр apps-script.gs-ийг байршуулж авсан /exec холбоос"><${TextIn} val=${st2.sheetsUrl} on=${v => u("sheetsUrl", v.trim())} ph="https://script.google.com/macros/s/…/exec" /><//>

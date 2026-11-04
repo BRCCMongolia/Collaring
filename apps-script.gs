@@ -62,12 +62,25 @@ function saveRows(ss, it) {
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
 }
 
+// Зураг: id-аар хайж, нэр өөрчлөгдсөн бол (ж: хүзүүвчний дугаар сонгосны дараа) файлыг шинээр үүсгэхгүй, нэрийг нь солино.
+// meta=true үед зураг ирэхгүй, зөвхөн нэр, тэмдэглэлийг шинэчилнэ.
 function savePhoto(ss, it) {
   const root = folder(DriveApp.getRootFolder(), PHOTO_FOLDER);
   const dir = it.survey ? folder(root, it.survey) : root;
-  const existing = dir.getFilesByName(it.name);
-  const file = existing.hasNext() ? existing.next() : dir.createFile(Utilities.newBlob(Utilities.base64Decode(String(it.data).split(",")[1]), "image/jpeg", it.name));
-  upsert(ss, "Зураг", { id: it.id, "Бодгалийн id": it.ind, "Файл": it.name, "Тэмдэглэл": it.note || "", "Холбоос": file.getUrl() });
+  const old = findRow(ss, "Зураг", it.id);
+  let file = null;
+  if (old && old["Файлын id"]) { try { file = DriveApp.getFileById(old["Файлын id"]); } catch (e) { file = null; } }
+  if (!file) { const ex = dir.getFilesByName((old && old["Файл"]) || it.name); if (ex.hasNext()) file = ex.next(); }
+  if (!file && it.data) file = dir.createFile(Utilities.newBlob(Utilities.base64Decode(String(it.data).split(",")[1]), "image/jpeg", it.name));
+  if (!file) return;
+  if (file.getName() !== it.name) file.setName(it.name);
+  upsert(ss, "Зураг", { id: it.id, "Бодгалийн id": it.ind, "Файл": it.name, "Тэмдэглэл": it.note || "", "Холбоос": file.getUrl(), "Файлын id": file.getId() });
+}
+function findRow(ss, name, id) {
+  const sh = ss.getSheetByName(name); if (!sh || sh.getLastRow() < 2) return null;
+  const data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues(), h = data[0], c = h.indexOf("id");
+  for (let i = 1; i < data.length; i++) if (data[i][c] === id) { const o = {}; h.forEach(function (k, j) { o[k] = data[i][j]; }); return o; }
+  return null;
 }
 function folder(parent, name) { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
 
