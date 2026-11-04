@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.4.3";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -29,7 +29,7 @@ const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"],
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Судлаач", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
-const DART_N = ["1", "2", "3+"], DART_SITE = ["Гуя / ташаа", "Мөр", "Бусад"], LIE = ["Хэвлийгээр", "Хажуугаар"];
+const DART_N = ["1", "2", "3+"], DART_SITE = ["Гуя", "Хаа", "Хүзүү", "Бусад"], LIE = ["Хэвлийгээр", "Хажуугаар"];
 const REPRO = ["Хээлтэй", "Хөхүүл", "Хээлгүй / хөхүүлгүй", "Тодорхойгүй"];
 const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
@@ -254,6 +254,7 @@ function missing(x) {
   if (x.status === "done" && !x.recovery) m.push("сэргэлт");
   return m;
 }
+const isMiss = (x, k) => missing(x).includes(k);
 const label = x => x.collarId ? `Бодгаль ${x.no} · ${x.collarId}` : `Бодгаль ${x.no}`;
 const fileLabel = x => x.collarId || `bodgal${x.no}`;
 function statusTag(x) {
@@ -293,7 +294,7 @@ function indRow(x) {
   r["Эмчийн үзлэг дууссан (OK)"] = x.vet && x.vet.decidedAt ? fmtHM(x.vet.decidedAt) : "";
   for (const [k, l] of [...SIDE.dart, ...SIDE.antidote]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Дундаж хурд (км/ц)": avgKmh(m) ?? "", "Дээд хурд (км/ц)": m.maxKmh ?? "", "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
-    "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.injuries || "", "Эмчийн тэмдэглэл": v.notes || "",
+    "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.inj === "Байхгүй" ? "байхгүй" : v.injuries || (v.inj === "Байгаа" ? "байгаа" : ""), "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
     "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Шинэчилсэн": fmtDT(x.updatedAt) });
@@ -533,7 +534,7 @@ const go = h => { location.hash = h; };
 function useRoute() { const [h, setH] = useState(location.hash || "#/"); useEffect(() => { const f = () => { setH(location.hash || "#/"); scrollTo(0, 0); }; addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []); return h.slice(1).split("/").filter(Boolean); }
 function useTick(on = true, ms = 1000) { const [, f] = useState(0); useEffect(() => { if (!on) return; const t = setInterval(() => f(x => x + 1), ms); return () => clearInterval(t); }, [on, ms]); }
 const Chips = ({ opts, val, on, cls = "" }) => html`<div class="chips">${opts.map(o => html`<button type="button" class=${"chip " + cls + (val === o ? " on" : "")} onClick=${() => on(val === o ? "" : o)}>${o}</button>`)}</div>`;
-const Field = ({ label, children, hint }) => html`<div class="field"><label class="lbl">${label}</label>${children}${hint && html`<div class="hint">${hint}</div>`}</div>`;
+const Field = ({ label, children, hint, miss }) => html`<div class=${"field" + (miss ? " miss" : "")}><label class="lbl">${label}${miss ? html`<span class="dutuu">дутуу</span>` : null}</label>${children}${hint && html`<div class="hint">${hint}</div>`}</div>`;
 const TopBar = ({ title, sub, back, right }) => html`<div class="topbar">${back ? html`<button class="iconbtn" aria-label="Буцах" onClick=${() => go(back)}>‹</button>` : html`<img class="logo-sm" src="logo-small.png" alt="BRCC" />`}<div class="grow"><div class="tt">${title}</div>${sub && html`<div class="ts">${sub}</div>`}</div>${right}</div>`;
 function Modal({ title, onClose, children }) { return html`<div class="modal-bg" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}><div class="modal"><div class="row between mb"><h2>${title}</h2><button class="iconbtn" onClick=${onClose}>✕</button></div>${children}</div></div>`; }
 // Текст талбар: бичих бүрт хадгална
@@ -667,9 +668,9 @@ function IndView({ id }) {
       ${ci === 0 && html`<button class="btn sec block mt" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
       ${startPick && html`<div class="card mt">${STEPS.slice(1).map((sp, i) => html`<button class="btn ghost block mb" onClick=${() => startFrom(i + 1)}>${sp.b}</button>`)}</div>`}
       <div class="nextbar"><div class="in">
-        ${vetBlock && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
+        ${vetBlock && html`<div class="hint center">Малын эмчийн шийдвэр:</div><div class="row vetbar"><button class="btn okb bigbtn" onClick=${() => vetDecision(id, true)}>✓ OK<span class="sub">хүзүүвчилнэ</span></button><button class="btn badb bigbtn" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(id, false); }}>✕ OK биш<span class="sub">хүзүүвчлэхгүй</span></button></div>`}
         ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
-        <button class=${"btn pri bigbtn" + (next.k === "chaseStart" ? " go" : next.k === "dart" ? " shoot" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span><span class="ico">${STEP_ICON[next.k]}</span>${next.b}<span class="sub">${STEP_SUB[next.k]}</span></button>
+        ${!vetBlock && html`<button class=${"btn pri bigbtn" + (next.k === "chaseStart" ? " go" : next.k === "dart" ? " shoot" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span><span class="ico">${STEP_ICON[next.k]}</span>${next.b}<span class="sub">${STEP_SUB[next.k]}</span></button>`}
       </div></div>
     </div>`}
 
@@ -692,6 +693,7 @@ function IndView({ id }) {
       </div></div>
     ${x.chase && x.chase.track && x.chase.track.length > 1 && st(x, "dart") && html`<button class="btn sec block mt" onClick=${() => saveChaseKmz(x)}>🗺 Хөөлтийн замыг KMZ хадгалах</button>`}
     ${ci !== 0 && html`<${PlaceCard} x=${x} />`}
+    <button class="btn pri block mt" onClick=${() => { updInd(id, () => {}); const n = missing(x).length; showToast(n ? `Хадгаллаа · дутуу ${n}` : "Хадгаллаа ✓"); }}>💾 Хадгалах</button>
     <button class="btn ghost block mt" onClick=${() => setQr(true)}>▦ Энэ бодгалийг QR-оор дамжуулах</button>
     <div class="hint center">Нөгөө машины утас «QR уншуулах»-аар аваад үргэлжлүүлнэ.</div>
     ${qr && html`<${QrShow} scope=${{ indId: id }} title=${"QR: " + label(x)} onClose=${() => setQr(false)} />`}
@@ -725,13 +727,13 @@ function PlaceCard({ x }) {
   const u = (k, v) => updInd(x.id, y => { y[k] = v; });
   return html`<div class="card"><h3 class="mb">Байршил, нөхцөл</h3>
     <div class="grid2">
-      <${Field} label="Аймаг"><${SearchPick} val=${x.aimag} opts=${typeof AIMAGS !== "undefined" ? AIMAGS : []} on=${v => updInd(x.id, y => { if (y.aimag !== v) y.soum = ""; y.aimag = v; })} ph="Өм…" /><//>
-      <${Field} label="Сум"><${SearchPick} val=${x.soum} opts=${soums.length ? soums : Object.values(typeof ADMIN !== "undefined" ? ADMIN : {}).flat()} on=${v => updInd(x.id, y => { y.soum = v; if (!y.aimag && typeof ADMIN !== "undefined") { const a = Object.keys(ADMIN).find(k => ADMIN[k].includes(v)); if (a) y.aimag = a; } })} ph="Бичиж хайх…" /><//>
+      <${Field} label="Аймаг" miss=${isMiss(x, "аймаг")}><${SearchPick} val=${x.aimag} opts=${typeof AIMAGS !== "undefined" ? AIMAGS : []} on=${v => updInd(x.id, y => { if (y.aimag !== v) y.soum = ""; y.aimag = v; })} ph="Өм…" /><//>
+      <${Field} label="Сум" miss=${isMiss(x, "сум")}><${SearchPick} val=${x.soum} opts=${soums.length ? soums : Object.values(typeof ADMIN !== "undefined" ? ADMIN : {}).flat()} on=${v => updInd(x.id, y => { y.soum = v; if (!y.aimag && typeof ADMIN !== "undefined") { const a = Object.keys(ADMIN).find(k => ADMIN[k].includes(v)); if (a) y.aimag = a; } })} ph="Бичиж хайх…" /><//>
     </div>
-    <${Field} label="Газрын нэр" hint="Дараагийн бодгальд автоматаар хуулагдана"><${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
+    <${Field} label="Газрын нэр" miss=${isMiss(x, "газрын нэр")} hint="Дараагийн бодгальд автоматаар хуулагдана"><${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
     <${Field} label="Амьдрах орчин"><${TextIn} val=${x.habitat} on=${v => u("habitat", v)} ph="ж: хялгана-хиаглаг тал" /><//>
     <div class="grid2">
-      <${Field} label="Агаарын хэм (°C)"><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v)} type="text" mode="decimal" /><//>
+      <${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v)} type="text" mode="decimal" /><//>
       <${Field} label="Цаг агаар"><${TextIn} val=${x.weather} on=${v => u("weather", v)} ph="салхи, үүл" /><//>
     </div>
     ${bad && html`<div class="panel warn">⚠ Агаарын хэм ${setting("tempMin")}–${setting("tempMax")} °C-ээс гадуур байна. Барилт хийхгүй (CPORT, JHA).</div>`}
@@ -775,8 +777,9 @@ function VetPanel({ x }) {
   const [vt, setVt] = useState({ resp: "", hr: "", temp: "", mucous: "" });
   const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; updInd(x.id, y => { y.vet.vitals = [...(y.vet.vitals || []), { ...vt, t: Date.now() }]; }); setVt({ resp: "", hr: "", temp: "", mucous: "" }); };
   return html`<div class="card"><h3 class="mb">Малын эмчийн үзлэг</h3>
-    <${Field} label="Биеийн ерөнхий байдал"><${Chips} opts=${BODY} val=${v.body} on=${val => uv("body", val)} /><//>
-    <${Field} label="Ил харагдах шарх сорви"><${TextIn} val=${v.injuries} on=${val => uv("injuries", val)} area=${true} /><//>
+    <${Field} label="Биеийн ерөнхий байдал" miss=${isMiss(x, "биеийн ерөнхий байдал")}><${Chips} opts=${BODY} val=${v.body} on=${val => uv("body", val)} /><//>
+    <${Field} label="Ил харагдах шарх сорви"><${Chips} opts=${["Байхгүй", "Байгаа"]} val=${v.inj || (v.injuries ? "Байгаа" : "")} on=${val => uv("inj", val)} />
+      ${(v.inj === "Байгаа" || (!v.inj && v.injuries)) && html`<div class="mt"><${TextIn} val=${v.injuries} on=${val => uv("injuries", val)} area=${true} ph="Хаана, ямар шарх сорви" /></div>`}<//>
     <${Field} label="Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)">
       ${(v.vitals || []).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · ${a.temp || "-"}°C · ${a.mucous || "-"}</span></div>`)}
       <div class="grid2 mt"><input class="inp" inputmode="numeric" placeholder="Амьсгал /мин" value=${vt.resp} onInput=${e => setVt({ ...vt, resp: e.target.value })} />
@@ -804,13 +807,13 @@ function CollarPanel({ x, compact }) {
   const addSample = (code, l) => updInd(x.id, y => { const n = (y.samples || []).filter(a => a.type === code).length + 1; y.samples = [...(y.samples || []), { code: `${short}-${code}-${n}`, type: code, label: l, t: Date.now() }]; });
   const free = COLLARS.filter(c => !used.has(c.id));
   return html`<div class="card"><h3 class="mb">${compact ? "Хүзүүвч, бодгалийн мэдээлэл" : "Хүзүүвчлэх"}</h3>
-    <${Field} label="Хүзүүвчний дугаар *" hint=${x.collarId ? `IMEI ${x.imei}` : `Сүүлийн 3 оронг бичнэ (ж: 808). Үлдсэн ${free.length} хүзүүвч.`}>
+    <${Field} label="Хүзүүвчний дугаар *" miss=${isMiss(x, "хүзүүвчний дугаар")} hint=${x.collarId ? `IMEI ${x.imei}` : `Сүүлийн 3 оронг бичнэ (ж: 808). Үлдсэн ${free.length} хүзүүвч.`}>
       ${x.collarId ? html`<div class="row"><div class="grow" style="font-size:1.6rem;font-weight:750">${x.collarId}</div><button class="btn ghost sm" onClick=${() => updInd(x.id, y => { y.collarId = ""; y.imei = ""; })}>Солих</button></div>`
         : html`<input class="inp" inputmode="numeric" placeholder="808" value=${q} onInput=${e => setQ(e.target.value.replace(/\D/g, ""))} />
           ${matches.length ? html`<div class="chips mt">${matches.slice(0, 8).map(c => html`<button class="chip" onClick=${() => pick(c)}>${c.id}${used.has(c.id) ? " (ашигласан)" : ""}</button>`)}</div>` : q.length >= 3 ? html`<div class="hint">Жагсаалтад алга</div>` : null}`}<//>
-    <div class="field"><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /></div>
-    <${Field} label="Хүйс"><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
-    <${Field} label="Нас (жил)"><input class="inp" inputmode="decimal" placeholder="ж: 4" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
+    <${Field} label="Хүзүүвчний зураг" miss=${isMiss(x, "хүзүүвчний зураг")}><${PhotoBtn} x=${x} k="collar" l="📷 Хүзүүвчний зураг" /><${Thumbs} x=${x} k="collar" /><//>
+    <${Field} label="Хүйс" miss=${isMiss(x, "хүйс")}><${Chips} opts=${SEX} val=${x.sex} on=${val => u("sex", val)} /><//>
+    <${Field} label="Нас (жил)" miss=${isMiss(x, "нас")}><input class="inp" inputmode="decimal" placeholder="ж: 4" value=${x.age ?? ""} onInput=${e => u("age", e.target.value.replace(",", "."))} /><//>
     ${x.age !== "" && x.age != null && !isNaN(+x.age) && +x.age < 3 && html`<label class="check"><input type="checkbox" checked=${!!x.growth} onChange=${e => u("growth", e.target.checked)} /> Өсөлтийг тооцсон</label><div class="hint" style="margin:-6px 0 12px">Залуу хуланд хүзүүвчийг өсөлтийн зайтай зүүнэ (удирдамж 6.5)</div>`}
     ${x.sex === "Эм" && html`<${Field} label="Үржлийн байдал"><${Chips} opts=${REPRO} val=${x.repro} on=${val => u("repro", val)} /><//>`}
     <${Field} label="Онцлох зан төрх"><${TextIn} val=${x.behaviour} on=${val => u("behaviour", val)} /><//>
@@ -823,14 +826,14 @@ function CollarPanel({ x, compact }) {
     <${Field} label="Дээж">
       <div class="chips">${SAMPLE_TYPES.map(([c, l]) => html`<button class="chip" onClick=${() => addSample(c, l)}>+ ${l}</button>`)}</div>
       ${(x.samples || []).map((a, i) => html`<div class="sample"><span>${a.code}</span><button class="iconbtn" style="height:32px" aria-label="Хасах" onClick=${() => { if (confirm(a.code + " дээжийг хасах уу?")) updInd(x.id, y => { y.samples.splice(i, 1); }); }}>✕</button></div>`)}<//>
-    <${Field} label="Бодгалийн зураг"><${PhotoBtn} x=${x} k="animal" l="📷 Бодгалийн зураг" /><${Thumbs} x=${x} k="animal" /><//>
+    <${Field} label="Бодгалийн зураг" miss=${isMiss(x, "бодгалийн зураг")}><${PhotoBtn} x=${x} k="animal" l="📷 Бодгалийн зураг" /><${Thumbs} x=${x} k="animal" /><//>
   </div>`;
 }
 
 function FinishPanel({ x }) {
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
   return html`<div class="card"><h3 class="mb">${x.chaseAborted ? "Хөөлт зогсоосон" : "Сэргэлт, суллалт"}</h3>
-    ${!x.chaseAborted && html`<${Field} label="Сэргэлт"><${Chips} opts=${RECOVERY} val=${x.recovery} on=${val => u("recovery", val)} cls=${x.recovery === "Муу" ? "badc" : "okc"} /><//>`}
+    ${!x.chaseAborted && html`<${Field} label="Сэргэлт" miss=${isMiss(x, "сэргэлт")}><${Chips} opts=${RECOVERY} val=${x.recovery} on=${val => u("recovery", val)} cls=${x.recovery === "Муу" ? "badc" : "okc"} /><//>`}
     <${Field} label="Тэмдэглэл"><${TextIn} val=${x.notes} on=${val => u("notes", val)} area=${true} /><//>
     <div class="hint">Бодгаль хаагдлаа. Засах бол талбаруудыг шууд өөрчилнө, эсвэл «↶ Буцаах».</div>
   </div>`;
