@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.1";
+const APP_VERSION = "0.4.2";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -27,7 +27,7 @@ const STEP_SUB = { chaseStart: "секундомер + GPS зай", dart: "хө�
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
 const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
-const ROLES = ["Баг ахлагч", "Малын эмч", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
+const ROLES = ["Баг ахлагч", "Малын эмч", "Судлаач", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
 const DART_N = ["1", "2", "3+"], DART_SITE = ["Гуя / ташаа", "Мөр", "Бусад"], LIE = ["Хэвлийгээр", "Хажуугаар"];
 const REPRO = ["Хээлтэй", "Хөхүүл", "Хээлгүй / хөхүүлгүй", "Тодорхойгүй"];
