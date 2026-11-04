@@ -53,7 +53,14 @@ h1,h2,h3{margin:0;font-weight:650} h2{font-size:1.15rem} h3{font-size:1.02rem}
 .btn.sm{min-height:40px;padding:6px 12px;font-size:.93rem}
 .btn.block{display:flex;width:100%}
 .btn:disabled{opacity:.45}
-.bigbtn{display:flex;width:100%;min-height:92px;font-size:1.45rem;border-radius:18px;margin:12px 0 6px;box-shadow:0 3px 0 var(--pri-d)}
+.bigbtn{display:flex;width:100%;min-height:84px;font-size:1.4rem;border-radius:18px;margin:4px 0 0;box-shadow:0 3px 0 var(--pri-d);position:relative}
+.bigbtn .stepno{position:absolute;left:14px;top:8px;font-size:.75rem;font-weight:700;opacity:.75}
+.nextbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:linear-gradient(rgba(244,237,225,0),var(--bg) 22%);padding:16px 16px calc(10px + env(safe-area-inset-bottom))}
+.nextbar .in{max-width:728px;margin:0 auto}
+body.night .nextbar{background:linear-gradient(rgba(33,27,21,0),var(--bg) 22%)}
+.page{padding-bottom:150px}
+.missing{background:var(--bad-l);color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px;font-weight:650;font-size:.92rem;margin-bottom:10px}
+.missing span{font-weight:400;opacity:.85}
 .row{display:flex;gap:8px;align-items:center} .row.wrap{flex-wrap:wrap} .row.between{justify-content:space-between} .row>*{min-width:0}
 .mt{margin-top:10px} .mb{margin-bottom:10px} .center{text-align:center}
 .field{margin-bottom:12px} .lbl{display:block;font-size:.88rem;color:var(--muted);font-weight:650;margin-bottom:5px}

@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.3";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -15,16 +15,15 @@ const kmOf = m => m == null ? "" : Math.round(m) / 1000;
 /* ---------- алхмууд ---------- */
 const STEPS = [
   { k: "chaseStart", b: "Хөөлт эхэллээ", s: "Хөөлт эхэлсэн" },
-  { k: "dart", b: "Буудлаа", s: "Буудсан" },
-  { k: "postDart", b: "Буудсаны дараах хяналт", s: "Буудсаны дараах хяналт" },
-  { k: "vet", b: "Малын эмчийн үзлэг", s: "Малын эмчийн үзлэг" },
+  { k: "dart", b: "Буудлаа", s: "Буудсан (хяналт эхэлсэн)" },
+  { k: "vet", b: "Малын эмчийн үзлэг эхэллээ", s: "Эмчийн үзлэг эхэлсэн" },
   { k: "collarStart", b: "Хүзүүвчлэх эхэллээ", s: "Хүзүүвчилж эхэлсэн" },
   { k: "collarEnd", b: "Хүзүүвчилж дууслаа", s: "Хүзүүвчилж дууссан" },
-  { k: "monStart", b: "Хяналт эхэллээ", s: "Сэргэлтийн хяналт эхэлсэн" },
+  { k: "antidote", b: "Сэргээх тариа хийлээ", s: "Сэргээх тариа (хяналт эхэлсэн)" },
   { k: "monEnd", b: "Хяналт дууслаа", s: "Хяналт дууссан" },
 ];
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
-const SIDE = { postDart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], monStart: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
+const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
@@ -68,10 +67,12 @@ async function loadAll() {
   const lim = Date.now() - 30 * 864e5;
   for (const [id, x] of Object.entries(S.inds)) if (x.deletedAt && x.deletedAt < lim) { (x.photos || []).forEach(p => DB.del("photo:" + p.id)); delete S.inds[id]; }
   for (const [id, x] of Object.entries(S.surveys)) if (x.deletedAt && x.deletedAt < lim) delete S.surveys[id];
+  // v0.1 → v0.2: «Буудсаны дараах хяналт», «Хяналт эхэллээ» алхам хасагдаж, «Сэргээх тариа» нэмэгдсэн
+  for (const x of Object.values(S.inds)) { if (x.steps.monStart && !x.steps.antidote) x.steps.antidote = x.steps.monStart; delete x.steps.monStart; delete x.steps.postDart; }
   S.ready = true; document.body.classList.toggle("night", !!S.settings.night); emit();
   ChaseTracker.resume(); setTimeout(flushQueue, 2000);
 }
-function useStore() { const [, f] = useState(0); useEffect(() => { const cb = () => f(x => x + 1); subs.add(cb); return () => subs.delete(cb); }, []); return S; }
+function useStore() { const [, f] = useState(0); useEffect(() => { const cb = () => f(x => x + 1); subs.add(cb); if (S.ready) cb(); return () => subs.delete(cb); }, []); return S; } // ачаалал дуусчихсан бол шууд дахин зурна (эс бөгөөс «Ачаалж байна»-д гацдаг)
 const setting = k => S.settings[k] ?? DEFAULTS[k];
 
 function updSurvey(id, fn) { const s = { ...S.surveys[id] }; fn(s); s.updatedAt = Date.now(); S.surveys[id] = s; persist("surveys"); enqueue("survey", id); emit(); }
@@ -155,7 +156,7 @@ async function pressStep(id, k) {
   if (k === "chaseStart") { ChaseTracker.start(id); }
   if (k === "dart" && ChaseTracker.indId === id) { const f = lastFix(); ChaseTracker.stop(); if (f) updInd(id, x => Object.assign(x.steps.dart, f)); }
   if (k === "collarStart") showToast(`${setting("handleMin")} минутын таймер эхэллээ`);
-  if (["collarStart", "monStart", "postDart", "dart"].includes(k)) keepAwake(true);
+  if (["collarStart", "antidote", "dart", "vet"].includes(k)) keepAwake(true);
   if (k === "monEnd") keepAwake(false);
   if (k === "dart" && S.inds[id].steps.dart.lat) return;
   const pos = lastFix() || await getPosition();
@@ -171,12 +172,12 @@ function undoStep(id) {
   if (i < 0) return;
   const o = x.steps[STEPS[i].k];
   if (o && o.skipped && o.reason === "vet") { // эмчийн «OK биш» шийдвэрийг буцаана
-    updInd(id, y => { delete y.steps.collarStart; delete y.steps.collarEnd; y.vet.ok = undefined; y.released = ""; y.status = "open"; }); return;
+    updInd(id, y => { delete y.steps.collarStart; delete y.steps.collarEnd; y.vet.ok = undefined; delete y.vet.decidedAt; y.released = ""; y.status = "open"; }); return;
   }
   const k = STEPS[i].k;
   updInd(id, y => {
     for (let j = i; j < STEPS.length; j++) delete y.steps[STEPS[j].k];
-    if (k === "vet") { y.vet = { ...(y.vet || {}), ok: undefined }; }
+    if (k === "vet") { y.vet = { ...(y.vet || {}), ok: undefined }; delete y.vet.decidedAt; }
     if (k === "chaseStart") { y.chase = null; y.chaseAborted = false; }
     y.status = "open";
   });
@@ -204,12 +205,26 @@ function metrics(x) {
     chase: diff(st(x, "chaseStart"), st(x, "dart") || (x.chaseAborted && x.steps.chaseStop && x.steps.chaseStop.t)),
     chaseM: x.chase ? x.chase.distM : null,
     induction: diff(st(x, "dart"), down && down.t),
-    vet: diff(st(x, "vet"), st(x, "collarStart") || (x.vet && x.vet.ok === false ? x.vet.decidedAt : null)),
+    vet: diff(st(x, "vet"), (x.vet && x.vet.decidedAt) || st(x, "collarStart")),
     handling: diff(st(x, "collarStart"), st(x, "collarEnd")),
-    standUp: diff(st(x, "monStart"), x.side && x.side.stood && x.side.stood.t),
-    monitoring: diff(st(x, "monStart"), st(x, "monEnd")),
+    standUp: diff(st(x, "antidote"), x.side && x.side.stood && x.side.stood.t),
+    monitoring: diff(st(x, "antidote"), st(x, "monEnd")),
     total: diff(first, st(x, "monEnd")),
   };
+}
+// Дутуу мэдээлэл (дараа бөглөж болно, улаанаар харуулна)
+function missing(x) {
+  const m = [];
+  if (!x.aimag) m.push("аймаг"); if (!x.soum) m.push("сум"); if (!x.place) m.push("газрын нэр");
+  if (x.airTemp === "" || x.airTemp == null) m.push("агаарын хэм");
+  if (st(x, "vet") && !(x.vet && x.vet.body)) m.push("биеийн ерөнхий байдал");
+  if (st(x, "collarStart")) {
+    if (!x.collarId) m.push("хүзүүвчний дугаар"); if (!x.sex) m.push("хүйс"); if (x.age === "" || x.age == null) m.push("нас");
+    if (!(x.photos || []).some(p => p.kind === "collar")) m.push("хүзүүвчний зураг");
+    if (!(x.photos || []).some(p => p.kind === "animal")) m.push("бодгалийн зураг");
+  }
+  if (x.status === "done" && !x.recovery) m.push("сэргэлт");
+  return m;
 }
 const label = x => x.collarId ? `Бодгаль ${x.no} · ${x.collarId}` : `Бодгаль ${x.no}`;
 const fileLabel = x => x.collarId || `bodgal${x.no}`;
@@ -245,7 +260,8 @@ function indRow(x) {
     "Агаарын хэм (°C)": x.airTemp ?? "", "Цаг агаар": x.weather || "" });
   for (const sp of STEPS) { const o = x.steps[sp.k]; r[sp.s] = o ? (o.skipped ? "алгассан" : fmtHM(o.t)) : ""; }
   for (const k of ["chaseStart", "dart", "collarEnd"]) { const o = x.steps[k]; r[`${STEPS[STEP_IDX[k]].s} N`] = o && o.lat || ""; r[`${STEPS[STEP_IDX[k]].s} E`] = o && o.lng || ""; }
-  for (const [k, l] of [...SIDE.postDart, ...SIDE.monStart]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
+  r["Эмчийн үзлэг дууссан (OK)"] = x.vet && x.vet.decidedAt ? fmtHM(x.vet.decidedAt) : "";
+  for (const [k, l] of [...SIDE.dart, ...SIDE.antidote]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.injuries || "", "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
@@ -361,6 +377,7 @@ function buildKml(list, title) {
   }
   return k + "</Document></kml>";
 }
+function saveChaseKmz(x) { saveFile(`${fileLabel(x)}_hooltiin_zam_${fmtDate(x.steps.chaseStart ? x.steps.chaseStart.t : Date.now())}.kmz`, makeZip([{ name: "doc.kml", data: buildKml([x], label(x)) }]), "application/vnd.google-earth.kmz"); }
 async function exportZip(sid) {
   const s = S.surveys[sid], list = indsOf(sid), base = `BRCC_Collaring_${safeName(s.name)}_${fmtDate(Date.now())}`;
   showToast("ZIP бэлдэж байна…");
@@ -574,7 +591,7 @@ function SurveyView({ id }) {
     <${TopBar} title=${s.name} sub=${`${s.species} · ${list.length} бодгаль`} back="#/" right=${html`<button class="iconbtn" aria-label="Засах" onClick=${() => setEdit(true)}>✎</button>`} />
     <button class="btn pri block" onClick=${newInd}>+ Шинэ бодгаль</button>
     ${list.length ? Object.entries(groups).map(([g, xs]) => html`<div class="group-h">📍 ${g}</div>${xs.map(x => html`<button class=${"card link" + (x.status === "done" ? " done" : x.status === "aborted" ? " abort" : "")} onClick=${() => go("#/i/" + x.id)}>
-        <div class="ct">${label(x)} ${statusTag(x)}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
+        <div class="ct">${label(x)} ${statusTag(x)}${missing(x).length && curStep(x) !== 0 ? html`<span class="tag bad">Дутуу ${missing(x).length}</span>` : null}</div><div class="cs">№${x.no} · ${[x.sex, x.age ? x.age + " нас" : ""].filter(Boolean).join(", ")}${x.sex || x.age ? " · " : ""}${fmtDT(x.createdAt)}</div></button>`)}`)
       : html`<div class="empty mt">Бодгаль алга. Амьтан харагдмагц «+ Шинэ бодгаль» дарна.</div>`}
     <div class="card mt"><table class="kv"><tbody>
       <tr><td>Баг</td><td>${(s.team || []).map(m => html`<div>${m.name} <span class="muted small">· ${m.role}</span></div>`)}</td></tr>
@@ -603,22 +620,25 @@ function IndView({ id }) {
   const m = metrics(x);
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
+    ${ci !== 0 && missing(x).length ? html`<div class="missing">Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
 
     ${lastK === "chaseStart" && !x.chaseAborted && html`<${ChasePanel} x=${x} />`}
-    ${lastK === "postDart" && html`<${TimerPanel} title="Буудсанаас хойш" from=${st(x, "dart") || x.steps.postDart.t} />`}
-    ${(lastK === "postDart" || lastK === "monStart") && html`<${SideButtons} x=${x} k=${lastK} />`}
+    ${lastK === "dart" && html`<${TimerPanel} title="Буудсанаас хойш (хяналт)" from=${x.steps.dart.t} />`}
+    ${(lastK === "dart" || lastK === "antidote") && html`<${SideButtons} x=${x} k=${lastK} />`}
     ${lastK === "vet" && html`<${VetPanel} x=${x} />`}
     ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><${CollarPanel} x=${x} />`}
-    ${lastK === "monStart" && html`<${TimerPanel} title="Хяналт эхэлснээс хойш" from=${x.steps.monStart.t} />`}
+    ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш (хяналт)" from=${x.steps.antidote.t} />`}
 
     ${next && !x.chaseAborted && html`<div>
-      <button class=${"btn pri bigbtn" + (next.k === "dart" && ChaseTracker.level === 2 ? " badb" : "")} disabled=${blocked} onClick=${() => pressStep(id, next.k)}>${next.b}</button>
-      ${vetBlock && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
-      ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
       ${next.k === "dart" && html`<button class="btn ghost block mt" onClick=${() => { if (confirm("Хөөлтийг буудалгүй зогсоох уу?")) abortChase(id); }}>Хөөлтийг зогсоох (буудаагүй)</button>`}
-      ${ci === 0 && html`<button class="btn sec block" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
+      ${ci === 0 && html`<button class="btn sec block mt" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
       ${startPick && html`<div class="card mt">${STEPS.slice(1).map((sp, i) => html`<button class="btn ghost block mb" onClick=${() => startFrom(i + 1)}>${sp.b}</button>`)}</div>`}
+      <div class="nextbar"><div class="in">
+        ${vetBlock && html`<div class="hint center">Малын эмч «OK» гэж шийдвэрлэсний дараа хүзүүвчилнэ.</div>`}
+        ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
+        <button class=${"btn pri bigbtn" + (next.k === "dart" && ChaseTracker.level === 2 ? " badb" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span>${next.b}</button>
+      </div></div>
     </div>`}
 
     ${(ci < 0 || x.chaseAborted) && html`<${FinishPanel} x=${x} />`}
@@ -638,6 +658,7 @@ function IndView({ id }) {
         ${m.monitoring != null && html`<div class="stat"><b>${fmtDur(m.monitoring)}</b><span>Хяналт</span></div>`}
         ${m.total != null && html`<div class="stat"><b>${fmtDur(m.total)}</b><span>Нийт</span></div>`}
       </div></div>
+    ${x.chase && x.chase.track && x.chase.track.length > 1 && st(x, "dart") && html`<button class="btn sec block mt" onClick=${() => saveChaseKmz(x)}>🗺 Хөөлтийн замыг KMZ хадгалах</button>`}
     ${ci !== 0 && html`<${PlaceCard} x=${x} />`}
     <button class="btn ghost block mt" onClick=${() => setQr(true)}>▦ Энэ бодгалийг QR-оор дамжуулах</button>
     <div class="hint center">Нөгөө машины утас «QR уншуулах»-аар аваад үргэлжлүүлнэ.</div>
@@ -732,7 +753,7 @@ function VetPanel({ x }) {
     <${Field} label="Эмчийн тэмдэглэл"><${TextIn} val=${v.notes} on=${val => uv("notes", val)} area=${true} /><//>
     <div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
       <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>
-    ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй суллана. Доорх «Хяналт эхэллээ» товчоор сэргэлтийг бүртгэнэ.</div>`}
+    ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй. Доорх «Сэргээх тариа хийлээ» товчоор үргэлжлүүлнэ.</div>`}
   </div>`;
 }
 
