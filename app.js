@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.4.9";
+const APP_VERSION = "0.5.0";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -41,6 +41,8 @@ const BODY = ["Сайн", "Дунд", "Муу"];
 const MUCOUS = ["Ягаан (хэвийн)", "Цайвар", "Хөхрөлттэй"];
 const RECOVERY = ["Сайн", "Дунд", "Муу"];
 const SAMPLE_TYPES = [["ЦУС", "Цус"], ["АРЧ", "Арчдас"], ["БААС", "Баас"], ["ҮС", "Үс"], ["БУС", "Бусад"]];
+// BRCC-ийн Google Sheet (brcc.mongolia@gmail.com), 2026-11-05. Утас бүрт автоматаар холбогдоно.
+const DEFAULT_SHEET = "https://script.google.com/macros/s/AKfycbzNHYnCtsl3fc6If_8aeRup1hdeRyXAtewL4JdhGjz_fo-q0HAKpFGlToughRp4t1wu/exec";
 const DEFAULTS = { chaseWarnMin: 8, chaseStopMin: 10, chaseWarnKm: 4, chaseStopKm: 5, handleMin: 3, tempMin: 5, tempMax: 20, gpsMaxAcc: 25, gpsMaxKmh: 120 };
 
 /* ---------- хадгалалт (IndexedDB, localStorage нөөц) ---------- */
@@ -72,6 +74,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 async function loadAll() {
   for (const k of ["surveys", "inds", "queue"]) { const v = await DB.get(k); if (v) S[k] = v; }
   const st = await DB.get("settings"); if (st) S.settings = { ...S.settings, ...st };
+  if (!(S.settings.sheetsUrl || "").trim()) { S.settings.sheetsUrl = DEFAULT_SHEET; persist("settings"); }
   // 30 хоногоос дээш хогийн саванд байгааг бүрмөсөн устгана
   const lim = Date.now() - 30 * 864e5;
   for (const [id, x] of Object.entries(S.inds)) if (x.deletedAt && x.deletedAt < lim) { (x.photos || []).forEach(p => DB.del("photo:" + p.id)); delete S.inds[id]; }
