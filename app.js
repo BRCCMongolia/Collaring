@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.0";
+const APP_VERSION = "0.5.1";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -260,7 +260,6 @@ function missing(x) {
   if (st(x, "vet") && !(x.vet && x.vet.body)) m.push("биеийн ерөнхий байдал");
   if (st(x, "collarStart")) {
     if (!x.collarId) m.push("хүзүүвчний дугаар"); if (!x.sex) m.push("хүйс"); if (x.age === "" || x.age == null) m.push("нас");
-    if (!(x.photos || []).some(p => p.kind === "collar")) m.push("хүзүүвчний зураг");
     if (!(x.photos || []).some(p => p.kind === "animal")) m.push("бодгалийн зураг");
   }
   if (x.status === "done" && !x.recovery) m.push("сэргэлт");
