@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.5";
+const APP_VERSION = "0.5.6";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -325,7 +325,7 @@ function indRow(x) {
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Дундаж хурд (км/ц)": avgKmh(m) ?? "", "Дээд хурд (км/ц)": m.maxKmh ?? "", "Үр дүн": failLabel(x) || (x.vet && x.vet.ok === false ? "Хүзүүвчлээгүй (эмч OK биш)" : x.status === "done" ? "Амжилттай" : ""), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.inj === "Байхгүй" ? "байхгүй" : v.injuries || (v.inj === "Байгаа" ? "байгаа" : ""), "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
-    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "", "Буудсаны дараах тэмдэглэл": x.dartNote || "",
+    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite === "Бусад" && x.dartSiteOther ? "Бусад: " + x.dartSiteOther : x.dartSite || "", "Буудсаны дараах тэмдэглэл": x.dartNote || "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Дутуу": missing(x).join(", "), "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
 }
@@ -880,7 +880,7 @@ function DartCard({ x }) {
       </svg>
       <div class="hint">${head == null ? "Хойд зүг (Х) дээшээ. Утсаа хойд зүг рүү чиглүүлбэл тасархай зураас сум руу заана." : "Утсаа хавтгай барьж, сум заасан зүг рүү явна."}${me ? ` GPS ±${me.acc} м.` : ""}${dist != null && dist < 25 ? " Ойрхон байна, эргэн тойрноо хайна." : ""}</div>
     </div>`}
-    <div class="mt"><${Field} label="Буудсан сумны тоо"><${Chips} opts=${DART_N} val=${x.dartN} on=${val => u("dartN", val)} /><//><${Field} label="Сум туссан газар"><${Chips} opts=${DART_SITE} val=${x.dartSite} on=${val => u("dartSite", val)} /><//></div>
+    <div class="mt"><${Field} label="Буудсан сумны тоо"><${Chips} opts=${DART_N} val=${x.dartN} on=${val => u("dartN", val)} /><//><${Field} label="Сум туссан газар"><${Chips} opts=${DART_SITE} val=${x.dartSite} on=${val => u("dartSite", val)} />${x.dartSite === "Бусад" && html`<div class="mt"><${TextIn} val=${x.dartSiteOther} on=${v => u("dartSiteOther", v)} ph="Хаана туссан бэ (ж: мөр, хэвлий)" /></div>`}<//></div>
     <${Field} label="Нэмэлт тэмдэглэл"><${TextIn} val=${x.dartNote} on=${v => u("dartNote", v)} area=${true} ph="Буудалт, амьтны байдал г.м." /><//>
   </div>`;
 }
