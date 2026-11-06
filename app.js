@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.3";
+const APP_VERSION = "0.5.4";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -25,7 +25,7 @@ const STEPS = [
 const STEP_ICON = { chaseStart: "▶", dart: "🎯", vet: "🩺", collarStart: "📡", collarEnd: "✔", antidote: "💉", monEnd: "🏁" };
 const STEP_SUB = { chaseStart: "секундомер + GPS зай", dart: "хөөлт зогсоно, хяналт эхэлнэ", vet: "үзлэг дуусмагц OK дарна", collarStart: "хүзүүвчлэх таймер эхэлнэ", collarEnd: "дараа нь сэргээх тариа", antidote: "сэргэлтийн хяналт эхэлнэ", monEnd: "бодгаль хаагдана" };
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
-const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Ойртсон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
+const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Зогссон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
 const ROLES = ["Баг ахлагч", "Малын эмч", "Судлаач", "Буудагч", "Цаг хэмжигч", "Хүзүүвч зүүгч", "Дээж авагч", "Зурагчин", "Ажиглагч", "Жолооч", "Бусад"];
 const SEX = ["Эр", "Эм"];
@@ -322,7 +322,7 @@ function indRow(x) {
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Дундаж хурд (км/ц)": avgKmh(m) ?? "", "Дээд хурд (км/ц)": m.maxKmh ?? "", "Үр дүн": failLabel(x) || (x.vet && x.vet.ok === false ? "Хүзүүвчлээгүй (эмч OK биш)" : x.status === "done" ? "Амжилттай" : ""), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.inj === "Байхгүй" ? "байхгүй" : v.injuries || (v.inj === "Байгаа" ? "байгаа" : ""), "Эмчийн тэмдэглэл": v.notes || "",
     "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
-    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "",
+    "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite || "", "Буудсаны дараах тэмдэглэл": x.dartNote || "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Дутуу": missing(x).join(", "), "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
 }
@@ -688,8 +688,9 @@ function IndView({ id }) {
   const startFrom = i => { updInd(id, y => { for (let j = 0; j < i; j++) y.steps[STEPS[j].k] = { skipped: true, reason: "start" }; }); setStartPick(false); pressStep(id, STEPS[i].k); };
   const del = () => { if (confirmAll([`${label(x)} бодгалийг устгах уу?`, "Үнэхээр устгах уу? (Хогийн саванд 30 хоног хадгалагдана)"])) { if (ChaseTracker.indId === id) ChaseTracker.stop(); updInd(id, y => { y.deletedAt = Date.now(); }); go("#/s/" + x.surveyId); } };
   const m = metrics(x);
+  const renum = () => { const v = prompt("Бодгалийн дугаар (№)", x.no); const n = parseInt(v, 10); if (!v || !(n > 0)) return; if (indsOf(x.surveyId).some(y => y.id !== x.id && y.no === n)) return showToast(`№${n} өөр бодгальд байна`); updInd(id, y => { const pre = `${y.no}-`; y.no = n; if (!y.collarId) (y.samples || []).forEach(a => { if (a.code.startsWith(pre)) a.code = n + "-" + a.code.slice(pre.length); }); }); (S.inds[id].photos || []).forEach(p => queuePhoto(id, p, true)); showToast(`№${n} болголоо`); };
   return html`<div class="page">
-    <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
+    <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} right=${html`<button class="iconbtn" style="font-size:.95rem;font-weight:800;width:auto;padding:0 10px" aria-label="Дугаар засах" onClick=${renum}>№ ✎</button>`} />
     ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => setShowMiss(false)}>Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
     ${lastK !== "chaseStart" && html`<${DartCard} x=${x} />`}
@@ -770,7 +771,7 @@ function PlaceCard({ x }) {
     </div>
     <${Field} label="Газрын нэр" miss=${isMiss(x, "газрын нэр")} hint="Дараагийн бодгальд автоматаар хуулагдана">${(() => { const ps = [...new Set(indsOf(x.surveyId).map(i => i.place).filter(Boolean))].filter(p => p !== x.place).slice(-6); return ps.length ? html`<div class="chips mb">${ps.map(p => html`<button type="button" class="chip" onClick=${() => u("place", p)}>${p}</button>`)}</div>` : null; })()}<${TextIn} val=${x.place} on=${v => u("place", v)} /><//>
     <${Field} label="Амьдрах орчин"><${QuickText} val=${x.habitat} on=${v => u("habitat", v)} opts=${HABITAT} /><//>
-    <div class="grid2"><${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v.replace(",", "."))} type="text" mode="decimal" /><//><div class="field"><label class="lbl">&nbsp;</label><button type="button" class="btn ghost" style="width:100%" onClick=${() => { const v = String(x.airTemp ?? "").trim(); u("airTemp", v.startsWith("-") ? v.slice(1) : "-" + v); }}>− хасах / + нэмэх</button></div></div>
+    <div class="grid2"><${Field} label="Агаарын хэм (°C)" miss=${isMiss(x, "агаарын хэм")}><${TextIn} val=${x.airTemp} on=${v => u("airTemp", v.replace(",", "."))} type="text" mode="decimal" /><//><div class="field"><label class="lbl">${"\u00a0"}</label><button type="button" class="btn ghost" style="width:100%" onClick=${() => { const v = String(x.airTemp ?? "").trim(); u("airTemp", v.startsWith("-") ? v.slice(1) : "-" + v); }}>−/+ хэм</button></div></div>
     <${Field} label="Цаг агаар"><${QuickText} val=${x.weather} on=${v => u("weather", v)} opts=${WEATHER} /><//>
     ${bad && html`<div class="panel warn">⚠ Агаарын хэм ${setting("tempMin")}–${setting("tempMax")} °C-ээс гадуур байна. Барилт хийхгүй (CPORT, JHA).</div>`}
   </div>`;
@@ -853,17 +854,18 @@ function useHeading(on) {
 function DartCard({ x }) {
   const d = x.steps.dart; const [me, setMe] = useState(null), [on, setOn] = useState(false); const head = useHeading(on);
   useEffect(() => { if (!on || !navigator.geolocation) return; const w = navigator.geolocation.watchPosition(p => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => { }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }); keepAwake(true); return () => navigator.geolocation.clearWatch(w); }, [on]);
-  if (!d || !d.lat) return null;
-  const txt = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
+  if (!d || d.skipped) return null;
+  const u = (k, v) => updInd(x.id, y => { y[k] = v; });
+  const txt = d.lat ? `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}` : "";
   const start = async () => { if (!on && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") { try { await DeviceOrientationEvent.requestPermission(); } catch (e) { } } setOn(!on); };
   const dist = me ? haversine(me, d) : null, brg = me ? bearing(me, d) : 0, dir = me ? DIRS[Math.round(brg / 45) % 8] : "";
   const rel = head == null ? brg : brg - head, nrot = head == null ? 0 : -head; // луужин байхгүй бол хойд зүг дээшээ
   const R = 110, rr = v => v * Math.PI / 180, ex = 130 + R * Math.sin(rr(rel)), ey = 130 - R * Math.cos(rr(rel));
   const distTxt = dist == null ? "" : dist < 1000 ? Math.round(dist) + " м" : (dist / 1000).toFixed(2) + " км";
   return html`<div class="card dartc"><h3 class="mb">🎯 Буудсан цэг</h3>
-    <button class="coord" onClick=${() => copyText(txt)}>${txt}<span>хуулах</span></button>
+    ${d.lat ? html`<button class="coord" onClick=${() => copyText(txt)}>${txt}<span>хуулах</span></button>
     <div class="muted small">${fmtHM(d.t)}${d.acc ? ` · ±${d.acc} м` : ""} · координат дээр дарахад хуулагдана</div>
-    <button class=${"btn block mt " + (on ? "ghost" : "pri")} onClick=${start}>${on ? "Сум хайхыг зогсоох" : "🎯 Сум хайх"}</button>
+    <button class=${"btn block mt " + (on ? "ghost" : "pri")} onClick=${start}>${on ? "Сум хайхыг зогсоох" : "🎯 Сум хайх"}</button>` : html`<div class="muted small">GPS координат бүртгэгдээгүй</div>`}
     ${on && html`<div class="center mt">
       ${me ? html`<div style="font-size:2.4rem;font-weight:800;line-height:1.1">${distTxt}</div><div style="font-size:1.15rem">буудсан цэг <b>${dir}</b> зүгт</div>` : html`<div class="muted">GPS хайж байна…</div>`}
       <svg viewBox="0 0 260 260" style="width:min(78vw,300px);display:block;margin:8px auto">
@@ -875,6 +877,8 @@ function DartCard({ x }) {
       </svg>
       <div class="hint">${head == null ? "Хойд зүг (Х) дээшээ. Утсаа хойд зүг рүү чиглүүлбэл тасархай зураас сум руу заана." : "Утсаа хавтгай барьж, сум заасан зүг рүү явна."}${me ? ` GPS ±${me.acc} м.` : ""}${dist != null && dist < 25 ? " Ойрхон байна, эргэн тойрноо хайна." : ""}</div>
     </div>`}
+    <div class="mt"><${Field} label="Буудсан сумны тоо"><${Chips} opts=${DART_N} val=${x.dartN} on=${val => u("dartN", val)} /><//><${Field} label="Сум туссан газар"><${Chips} opts=${DART_SITE} val=${x.dartSite} on=${val => u("dartSite", val)} /><//></div>
+    <${Field} label="Нэмэлт тэмдэглэл"><${TextIn} val=${x.dartNote} on=${v => u("dartNote", v)} area=${true} ph="Буудалт, амьтны байдал г.м." /><//>
   </div>`;
 }
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
@@ -906,7 +910,6 @@ function CollarPanel({ x, compact }) {
     <label class="check"><input type="checkbox" checked=${!!x.fit2} onChange=${e => u("fit2", e.target.checked)} /> Хоёр хуруу багтана (хүзүүвчний чангалаг)</label>
     <label class="check"><input type="checkbox" checked=${!!x.eyes} onChange=${e => u("eyes", e.target.checked)} /> Нүд боосон, чих бөглөсөн</label>
     <${Field} label="Хэвтүүлсэн байдал"><${Chips} opts=${LIE} val=${x.lie} on=${val => u("lie", val)} /><//>
-    <div class="grid2"><${Field} label="Буудсан сумны тоо"><${Chips} opts=${DART_N} val=${x.dartN} on=${val => u("dartN", val)} /><//><${Field} label="Сум туссан газар"><${Chips} opts=${DART_SITE} val=${x.dartSite} on=${val => u("dartSite", val)} /><//></div>
     <hr class="sep" />
     <${Field} label="Дээж">
       <div class="chips">${SAMPLE_TYPES.map(([c, l]) => html`<button class="chip" onClick=${() => addSample(c, l)}>+ ${l}</button>`)}</div>
