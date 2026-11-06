@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.1";
+const APP_VERSION = "0.5.2";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -677,6 +677,7 @@ function IndView({ id }) {
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} />
     ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => setShowMiss(false)}>Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
+    ${lastK !== "chaseStart" && html`<${DartCard} x=${x} />`}
 
     ${lastK === "chaseStart" && !x.chaseAborted && html`<${ChasePanel} x=${x} />`}
     ${lastK === "dart" && html`<${TimerPanel} title="Буудсанаас хойш (хяналт)" from=${x.steps.dart.t} />`}
@@ -822,6 +823,24 @@ function VetPanel({ x }) {
   </div>`;
 }
 
+
+/* ---------- Буудсан цэг: сумаа буцааж олоход ---------- */
+const DIRS = ["хойд", "зүүн хойд", "зүүн", "зүүн өмнөд", "өмнөд", "баруун өмнөд", "баруун", "баруун хойд"];
+function bearing(a, b) { const r = x => x * Math.PI / 180, y = Math.sin(r(b.lng - a.lng)) * Math.cos(r(b.lat)), xx = Math.cos(r(a.lat)) * Math.sin(r(b.lat)) - Math.sin(r(a.lat)) * Math.cos(r(b.lat)) * Math.cos(r(b.lng - a.lng)); return (Math.atan2(y, xx) * 180 / Math.PI + 360) % 360; }
+async function copyText(t) { try { await navigator.clipboard.writeText(t); } catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (er) { } ta.remove(); } showToast("Хуулагдлаа: " + t); }
+function DartCard({ x }) {
+  const d = x.steps.dart; const [me, setMe] = useState(null), [on, setOn] = useState(false);
+  useEffect(() => { if (!on || !navigator.geolocation) return; const w = navigator.geolocation.watchPosition(p => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => { }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }); return () => navigator.geolocation.clearWatch(w); }, [on]);
+  if (!d || !d.lat) return null;
+  const txt = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
+  const dist = me ? haversine(me, d) : null, dir = me ? DIRS[Math.round(bearing(me, d) / 45) % 8] : "";
+  return html`<div class="card dartc"><h3 class="mb">🎯 Буудсан цэг</h3>
+    <button class="coord" onClick=${() => copyText(txt)}>${txt}<span>хуулах</span></button>
+    <div class="muted small">${fmtHM(d.t)}${d.acc ? ` · ±${d.acc} м` : ""} · дарахад хуулагдана</div>
+    <div class="row mt"><button class="btn sec sm" style="flex:1" onClick=${() => copyText(txt)}>📋 Хуулах</button><a class="btn sec sm" style="flex:1" href=${`https://maps.google.com/?q=${d.lat},${d.lng}`} target="_blank" rel="noopener">🗺 Газрын зураг</a><button class=${"btn sm " + (on ? "pri" : "sec")} style="flex:1" onClick=${() => setOn(!on)}>🧭 ${on ? "Зогсоох" : "Чиглүүлэх"}</button></div>
+    ${on && html`<div class="center mt">${me ? html`<div style="font-size:2rem;font-weight:800">${dist < 1000 ? Math.round(dist) + " м" : (dist / 1000).toFixed(2) + " км"}</div><div>Буудсан цэг <b>${dir}</b> зүгт · GPS ±${me.acc} м</div>` : html`<span class="muted">GPS хайж байна…</span>`}</div>`}
+  </div>`;
+}
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
 // Зургийн тэмдэглэл, нэр өөрчлөгдөхөд зургийг дахин илгээхгүй, зөвхөн мэдээллийг шинэчилнэ (meta)
 function queuePhoto(indId, p, meta) { const q = S.queue.find(i => i.kind === "photo" && i.id === p.id); const m = meta && !(q && !q.meta) && !!(S.settings.sentPhotos || {})[p.id]; enqueue("photo", p.id, { indId, pkind: p.kind, meta: m || undefined }); }
