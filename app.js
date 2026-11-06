@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.4";
+const APP_VERSION = "0.5.5";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -95,7 +95,10 @@ const setting = k => S.settings[k] ?? DEFAULTS[k];
 function updSurvey(id, fn) { const s = { ...S.surveys[id] }; fn(s); s.updatedAt = Date.now(); S.surveys[id] = s; persist("surveys"); enqueue("survey", id); emit(); }
 function updInd(id, fn, opts = {}) { const x = JSON.parse(JSON.stringify(S.inds[id])); fn(x); x.updatedAt = Date.now(); S.inds[id] = x; persist("inds"); if (!opts.noSync) enqueue("ind", id); emit(); }
 const liveSurveys = () => Object.values(S.surveys).filter(s => !s.deletedAt).sort((a, b) => b.createdAt - a.createdAt);
-const indsOf = sid => Object.values(S.inds).filter(x => x.surveyId === sid && !x.deletedAt).sort((a, b) => a.createdAt - b.createdAt);
+// Он цагийн дараалал: эхний бүртгэгдсэн алхмын цагаар (сүүлд хөөсөн/буудсан нь хамгийн сүүлд)
+const startT = x => { for (const sp of STEPS) { const o = x.steps && x.steps[sp.k]; if (o && !o.skipped && o.t) return o.t; } return x.createdAt; };
+const byTime = (a, b) => startT(a) - startT(b) || a.createdAt - b.createdAt;
+const indsOf = sid => Object.values(S.inds).filter(x => x.surveyId === sid && !x.deletedAt).sort(byTime);
 const usedCollars = exceptId => new Set(Object.values(S.inds).filter(x => !x.deletedAt && x.collarId && x.id !== exceptId).map(x => x.collarId));
 
 /* ---------- гео ---------- */
@@ -313,7 +316,7 @@ function enqueue(kind, id, extra) { S.queue = S.queue.filter(q => !(q.kind === k
 function surveyRow(s) { return { id: s.id, "Судалгаа": s.name, "Зүйл": s.species, "Баг": (s.team || []).map(m => `${m.name} (${m.role})`).join("; "), "Бүртгэгч": s.recorder || "", "Үүсгэсэн": fmtDT(s.createdAt), "Устгасан": s.deletedAt ? fmtDT(s.deletedAt) : "" }; }
 function indRow(x) {
   const s = S.surveys[x.surveyId] || {}, m = metrics(x), v = x.vet || {}, r = { id: x.id };
-  Object.assign(r, { "Судалгаа": s.name || "", "Зүйл": s.species || "", "№": x.no, "Хүзүүвч": x.collarId || "", "Iridium IMEI": x.imei || "", "Огноо": fmtDate(x.createdAt), "Аймаг": x.aimag || "", "Сум": x.soum || "", "Газрын нэр": x.place || "", "Амьдрах орчин": x.habitat || "",
+  Object.assign(r, { "Судалгаа": s.name || "", "Зүйл": s.species || "", "№": x.no, "Хүзүүвч": x.collarId || "", "Iridium IMEI": x.imei || "", "Огноо": fmtDate(x.createdAt), "Эхэлсэн": fmtDT(startT(x)), "Аймаг": x.aimag || "", "Сум": x.soum || "", "Газрын нэр": x.place || "", "Амьдрах орчин": x.habitat || "",
     "Агаарын хэм (°C)": x.airTemp ?? "", "Цаг агаар": x.weather || "" });
   for (const sp of STEPS) { const o = x.steps[sp.k]; r[sp.s] = o ? (o.skipped ? "алгассан" : fmtHM(o.t)) : ""; }
   for (const k of ["chaseStart", "dart", "collarEnd"]) { const o = x.steps[k]; r[`${STEPS[STEP_IDX[k]].s} N`] = o && o.lat || ""; r[`${STEPS[STEP_IDX[k]].s} E`] = o && o.lng || ""; }
@@ -414,7 +417,7 @@ function buildSheets(list) {
 }
 const safeName = n => (n || "bugd").replace(/[^\wА-Яа-яЁёӨөҮү-]+/g, "_");
 function exportSurvey(sid) {
-  const s = S.surveys[sid], list = sid ? indsOf(sid) : Object.values(S.inds).filter(x => !x.deletedAt);
+  const s = S.surveys[sid], list = sid ? indsOf(sid) : Object.values(S.inds).filter(x => !x.deletedAt).sort(byTime);
   saveFile(`BRCC_Collaring_${safeName(s && s.name)}_${fmtDate(Date.now())}.xlsx`, makeXlsx(buildSheets(list)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 }
 

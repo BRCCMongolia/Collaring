@@ -11,7 +11,7 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     (body.items || []).forEach(function (it) {
       if (it.kind === "survey") upsert(ss, "Судалгаа", it.row);
-      else if (it.kind === "ind") upsert(ss, "Бодгаль", it.row);
+      else if (it.kind === "ind") { upsert(ss, "Бодгаль", it.row); sortBy(ss, "Бодгаль", "Эхэлсэн"); }
       else if (it.kind === "track") saveTrack(ss, it);
       else if (it.kind === "photo") savePhoto(ss, it);
       else if (it.kind === "rows") saveRows(ss, it);
@@ -81,6 +81,12 @@ function findRow(ss, name, id) {
   const data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues(), h = data[0], c = h.indexOf("id");
   for (let i = 1; i < data.length; i++) if (data[i][c] === id) { const o = {}; h.forEach(function (k, j) { o[k] = data[i][j]; }); return o; }
   return null;
+}
+// Он цагийн дарааллаар эрэмбэлнэ (сүүлд хөөсөн нь доор)
+function sortBy(ss, name, col) {
+  const sh = ss.getSheetByName(name); if (!sh || sh.getLastRow() < 3) return;
+  const c = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].indexOf(col) + 1; if (!c) return;
+  sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).sort({ column: c, ascending: true });
 }
 function folder(parent, name) { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
 
