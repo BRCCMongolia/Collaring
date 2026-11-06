@@ -828,17 +828,38 @@ function VetPanel({ x }) {
 const DIRS = ["хойд", "зүүн хойд", "зүүн", "зүүн өмнөд", "өмнөд", "баруун өмнөд", "баруун", "баруун хойд"];
 function bearing(a, b) { const r = x => x * Math.PI / 180, y = Math.sin(r(b.lng - a.lng)) * Math.cos(r(b.lat)), xx = Math.cos(r(a.lat)) * Math.sin(r(b.lat)) - Math.sin(r(a.lat)) * Math.cos(r(b.lat)) * Math.cos(r(b.lng - a.lng)); return (Math.atan2(y, xx) * 180 / Math.PI + 360) % 360; }
 async function copyText(t) { try { await navigator.clipboard.writeText(t); } catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (er) { } ta.remove(); } showToast("Хуулагдлаа: " + t); }
+// Утасны луужин (iOS: webkitCompassHeading, Android: deviceorientationabsolute)
+function useHeading(on) {
+  const [h, setH] = useState(null);
+  useEffect(() => { if (!on) return; const f = e => { const v = e.webkitCompassHeading != null ? e.webkitCompassHeading : (e.absolute && e.alpha != null ? 360 - e.alpha : null); if (v != null) setH(v); };
+    addEventListener("deviceorientationabsolute", f); addEventListener("deviceorientation", f); return () => { removeEventListener("deviceorientationabsolute", f); removeEventListener("deviceorientation", f); }; }, [on]);
+  return h;
+}
 function DartCard({ x }) {
-  const d = x.steps.dart; const [me, setMe] = useState(null), [on, setOn] = useState(false);
-  useEffect(() => { if (!on || !navigator.geolocation) return; const w = navigator.geolocation.watchPosition(p => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => { }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }); return () => navigator.geolocation.clearWatch(w); }, [on]);
+  const d = x.steps.dart; const [me, setMe] = useState(null), [on, setOn] = useState(false); const head = useHeading(on);
+  useEffect(() => { if (!on || !navigator.geolocation) return; const w = navigator.geolocation.watchPosition(p => setMe({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => { }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 }); keepAwake(true); return () => navigator.geolocation.clearWatch(w); }, [on]);
   if (!d || !d.lat) return null;
   const txt = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
-  const dist = me ? haversine(me, d) : null, dir = me ? DIRS[Math.round(bearing(me, d) / 45) % 8] : "";
+  const start = async () => { if (!on && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") { try { await DeviceOrientationEvent.requestPermission(); } catch (e) { } } setOn(!on); };
+  const dist = me ? haversine(me, d) : null, brg = me ? bearing(me, d) : 0, dir = me ? DIRS[Math.round(brg / 45) % 8] : "";
+  const rel = head == null ? brg : brg - head, nrot = head == null ? 0 : -head; // луужин байхгүй бол хойд зүг дээшээ
+  const R = 110, rr = v => v * Math.PI / 180, ex = 130 + R * Math.sin(rr(rel)), ey = 130 - R * Math.cos(rr(rel));
+  const distTxt = dist == null ? "" : dist < 1000 ? Math.round(dist) + " м" : (dist / 1000).toFixed(2) + " км";
   return html`<div class="card dartc"><h3 class="mb">🎯 Буудсан цэг</h3>
     <button class="coord" onClick=${() => copyText(txt)}>${txt}<span>хуулах</span></button>
-    <div class="muted small">${fmtHM(d.t)}${d.acc ? ` · ±${d.acc} м` : ""} · дарахад хуулагдана</div>
-    <div class="row mt"><button class="btn sec sm" style="flex:1" onClick=${() => copyText(txt)}>📋 Хуулах</button><a class="btn sec sm" style="flex:1" href=${`https://maps.google.com/?q=${d.lat},${d.lng}`} target="_blank" rel="noopener">🗺 Газрын зураг</a><button class=${"btn sm " + (on ? "pri" : "sec")} style="flex:1" onClick=${() => setOn(!on)}>🧭 ${on ? "Зогсоох" : "Чиглүүлэх"}</button></div>
-    ${on && html`<div class="center mt">${me ? html`<div style="font-size:2rem;font-weight:800">${dist < 1000 ? Math.round(dist) + " м" : (dist / 1000).toFixed(2) + " км"}</div><div>Буудсан цэг <b>${dir}</b> зүгт · GPS ±${me.acc} м</div>` : html`<span class="muted">GPS хайж байна…</span>`}</div>`}
+    <div class="muted small">${fmtHM(d.t)}${d.acc ? ` · ±${d.acc} м` : ""} · координат дээр дарахад хуулагдана</div>
+    <button class=${"btn block mt " + (on ? "ghost" : "pri")} onClick=${start}>${on ? "Сум хайхыг зогсоох" : "🎯 Сум хайх"}</button>
+    ${on && html`<div class="center mt">
+      ${me ? html`<div style="font-size:2.4rem;font-weight:800;line-height:1.1">${distTxt}</div><div style="font-size:1.15rem">буудсан цэг <b>${dir}</b> зүгт</div>` : html`<div class="muted">GPS хайж байна…</div>`}
+      <svg viewBox="0 0 260 260" style="width:min(78vw,300px);display:block;margin:8px auto">
+        <circle cx="130" cy="130" r="122" fill="none" stroke="var(--line)" stroke-width="2" />
+        <g transform=${`rotate(${nrot} 130 130)`}><text x="130" y="30" text-anchor="middle" font-size="20" font-weight="800" fill="var(--bad)">Х</text><line x1="130" y1="10" x2="130" y2="2" stroke="var(--bad)" stroke-width="4" /></g>
+        ${me && html`<line x1="130" y1="130" x2=${ex} y2=${ey} stroke="var(--pri)" stroke-width="3" stroke-dasharray="6 7" stroke-linecap="round" />
+        <g transform=${`rotate(${rel} 130 130)`}><path d="M130 10 l-12 22 h24 z" fill="var(--pri)" /></g>`}
+        <circle cx="130" cy="130" r="9" fill="var(--ink)" /><text x="130" y="158" text-anchor="middle" font-size="13" fill="var(--muted)">та</text>
+      </svg>
+      <div class="hint">${head == null ? "Хойд зүг (Х) дээшээ. Утсаа хойд зүг рүү чиглүүлбэл тасархай зураас сум руу заана." : "Утсаа хавтгай барьж, сум заасан зүг рүү явна."}${me ? ` GPS ±${me.acc} м.` : ""}${dist != null && dist < 25 ? " Ойрхон байна, эргэн тойрноо хайна." : ""}</div>
+    </div>`}
   </div>`;
 }
 const PhotoBtn = ({ x, k, l }) => html`<label class="btn sec sm">${l}<input type="file" accept="image/*" capture="environment" style="display:none" onChange=${async e => { const f = e.target.files[0]; e.target.value = ""; if (f) { try { await addPhoto(x.id, k, f); showToast("Зураг хадгаллаа"); } catch (er) { showToast("Зураг хадгалж чадсангүй"); } } }} /></label>`;
