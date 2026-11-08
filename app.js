@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.9";
+const APP_VERSION = "0.5.10";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -100,7 +100,8 @@ const startT = x => { for (const sp of STEPS) { const o = x.steps && x.steps[sp.
 const byTime = (a, b) => startT(a) - startT(b) || a.createdAt - b.createdAt;
 const indsOf = sid => Object.values(S.inds).filter(x => x.surveyId === sid && !x.deletedAt).sort(byTime);
 // Амжилтгүй дууссан / эмч OK биш бодгалийн хүзүүвч амьтанд зүүгдээгүй тул чөлөөтэй гэж тооцно
-const usedCollars = exceptId => new Set(Object.values(S.inds).filter(x => !x.deletedAt && x.collarId && x.id !== exceptId && !failLabel(x) && !(x.vet && x.vet.ok === false)).map(x => x.collarId));
+const collarHolders = exceptId => Object.values(S.inds).filter(x => !x.deletedAt && x.collarId && x.id !== exceptId && !failLabel(x) && !(x.vet && x.vet.ok === false) && S.surveys[x.surveyId] && !S.surveys[x.surveyId].deletedAt); // устгасан судалгааных тоологдохгүй
+const usedCollars = exceptId => new Set(collarHolders(exceptId).map(x => x.collarId));
 
 /* ---------- гео ---------- */
 function haversine(a, b) { const R = 6371000, r = x => x * Math.PI / 180, dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
@@ -668,7 +669,7 @@ function Report({ list }) {
     <h3 class="mt">✕ Амжилтгүй, явагдаж буй (${bad.length})</h3>
     ${bad.length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>
     <h4>Дундаж</h4>${avgRows(bad, [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Буудсанаас хэвтэх"]])}` : html`<div class="muted small">Алга</div>`}
-    <h3 class="mt">Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
+    <h3 class="mt">Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}${collarHolders().map(y => html`<div class="muted small">${y.collarId} · ${S.surveys[y.surveyId].name} · №${y.no}${collared(y) ? "" : " (дуусаагүй)"}</div>`)}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
   </div>`;
 }
 function SurveyView({ id }) {
