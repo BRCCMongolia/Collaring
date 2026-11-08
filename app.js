@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.7";
+const APP_VERSION = "0.5.8";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -45,7 +45,7 @@ const RECOVERY = ["Сайн", "Дунд", "Муу"];
 const SAMPLE_TYPES = [["ЦУС", "Цус"], ["АРЧ", "Арчдас"], ["БААС", "Баас"], ["ҮС", "Үс"], ["БУС", "Бусад"]];
 // BRCC-ийн Google Sheet (brcc.mongolia@gmail.com), 2026-11-05. Утас бүрт автоматаар холбогдоно.
 const DEFAULT_SHEET = "https://script.google.com/macros/s/AKfycbzNHYnCtsl3fc6If_8aeRup1hdeRyXAtewL4JdhGjz_fo-q0HAKpFGlToughRp4t1wu/exec";
-const DEFAULTS = { chaseWarnMin: 8, chaseStopMin: 10, chaseWarnKm: 4, chaseStopKm: 5, handleMin: 3, tempMin: 5, tempMax: 20, gpsMaxAcc: 25, gpsMaxKmh: 120 };
+const DEFAULTS = { chaseWarnMin: 8, chaseStopMin: 10, chaseWarnKm: 4, chaseStopKm: 5, handleMin: 3, tempMin: 5, tempMax: 20, gpsMaxAcc: 25, gpsMaxKmh: 120, targetF: 20, targetM: 10 };
 
 /* ---------- хадгалалт (IndexedDB, localStorage нөөц) ---------- */
 const DB = (() => {
@@ -647,6 +647,27 @@ function SurveyModal({ onClose, survey }) {
 }
 
 /* ---------- Судалгаа ---------- */
+const locOf = x => [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "Байршил оруулаагүй";
+function byLoc(xs) { const g = new Map(); xs.forEach(x => { const l = locOf(x); if (!g.has(l)) g.set(l, []); g.get(l).push(x); }); return [...g.entries()]; }
+const avgOf = a => a.length ? a.reduce((p, v) => p + v, 0) / a.length : null;
+function Report({ list }) {
+  const col = list.filter(collared), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
+  const fails = {}; list.filter(x => !collared(x)).forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
+  const ms = list.map(metrics), dur = a => a == null ? "–" : fmtDur(a);
+  const chase = avgOf(ms.map(m => m.chase).filter(v => v != null)), km = avgOf(ms.map(m => m.chaseM).filter(v => v != null)), ind = avgOf(ms.map(m => m.induction).filter(v => v != null)), hand = avgOf(col.map(metrics).map(m => m.handling).filter(v => v != null));
+  const free = COLLARS.length - usedCollars().size;
+  const bar = (n, t) => html`<div class="bar"><i style=${`width:${Math.min(100, t ? n / t * 100 : 0)}%`}></i></div>`;
+  return html`<div class="card report">
+    <div class="stats"><div class="stat"><b>${col.length} / ${tF + tM}</b><span>Хүзүүвчилсэн</span>${bar(col.length, tF + tM)}</div><div class="stat"><b>${F} / ${tF}</b><span>Эм</span>${bar(F, tF)}</div><div class="stat"><b>${M} / ${tM}</b><span>Эр</span>${bar(M, tM)}</div></div>
+    ${col.length - F - M > 0 ? html`<div class="hint">${col.length - F - M} бодгалийн хүйс бичигдээгүй</div>` : null}
+    <h4>Байршлаар</h4>${col.length ? html`<table class="kv"><tbody>${byLoc(col).map(([l, ys]) => html`<tr><td>${l}</td><td><b>${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span></td></tr>`)}</tbody></table>` : html`<div class="muted small">Одоогоор алга</div>`}
+    <h4>Амжилтгүй, бусад (${list.length - col.length})</h4>${Object.keys(fails).length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>` : html`<div class="muted small">Алга</div>`}
+    <h4>Дундаж</h4><table class="kv"><tbody>
+      <tr><td>Хөөлтийн хугацаа</td><td>${dur(chase)}</td></tr><tr><td>Хөөсөн зай</td><td>${km == null ? "–" : (km / 1000).toFixed(2) + " км"}</td></tr>
+      <tr><td>Буудсанаас хэвтэх</td><td>${dur(ind)}</td></tr><tr><td>Хүзүүвчилсэн хугацаа</td><td>${dur(hand)}</td></tr></tbody></table>
+    <h4>Хүзүүвч</h4><table class="kv"><tbody><tr><td>Үлдсэн (зүүгээгүй)</td><td><b>${free}</b> / ${COLLARS.length}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
+  </div>`;
+}
 function SurveyView({ id }) {
   useStore(); const s = S.surveys[id]; const [edit, setEdit] = useState(false); const [qr, setQr] = useState(false);
   if (!s || s.deletedAt) return html`<div class="page"><${TopBar} title="Олдсонгүй" back="#/" /></div>`;
@@ -668,13 +689,16 @@ function SurveyView({ id }) {
   return html`<div class="page">
     <${TopBar} title=${s.name} sub=${`${s.species} · ${list.length} бодгаль`} back="#/" right=${html`<button class="iconbtn" aria-label="Засах" onClick=${() => setEdit(true)}>✎</button>`} />
     <button class="btn pri block" onClick=${newInd}>+ Шинэ бодгаль</button>
-    ${list.length ? secs.map(([k, t, xs]) => html`<button class="fold-h" onClick=${() => fold(k)}><span>${t} (${xs.length})</span><span>${closed[k] ? "▸" : "▾"}</span></button>${!closed[k] && (xs.length ? xs.map(card) : html`<div class="muted small" style="margin:0 4px 10px">Алга</div>`)}`)
+    ${list.length ? secs.map(([k, t, xs]) => html`<button class="fold-h" onClick=${() => fold(k)}><span>${t} (${xs.length})</span><span>${closed[k] ? "▸" : "▾"}</span></button>${!closed[k] && (!xs.length ? html`<div class="muted small" style="margin:0 4px 10px">Алга</div>`
+      : k === "ok" ? byLoc(xs).map(([l, ys]) => html`<button class="loc-h" onClick=${() => fold("loc:" + l)}><span>📍 ${l} <b>(${ys.length})</b></span><span>${closed["loc:" + l] ? "▸" : "▾"}</span></button>${!closed["loc:" + l] && ys.map(card)}`)
+      : xs.map(card))}`)
       : html`<div class="empty mt">Бодгаль алга. Амьтан харагдмагц «+ Шинэ бодгаль» дарна.</div>`}
     <div class="card mt"><table class="kv"><tbody>
       <tr><td>Баг</td><td>${(s.team || []).map(m => html`<div>${m.name} <span class="muted small">· ${m.role}</span></div>`)}</td></tr>
       <tr><td>Бүртгэгч</td><td>${s.recorder}</td></tr></tbody></table></div>
     <div class="row wrap mt"><button class="btn ghost" onClick=${() => exportZip(id)}>📦 ZIP илгээх</button><button class="btn ghost" onClick=${() => exportSurvey(id)}>⬇ Excel</button><button class="btn ghost" onClick=${() => setQr(true)}>▦ QR үзүүлэх</button><button class="btn danger" onClick=${del}>Устгах</button></div>
     <p class="hint">ZIP: Excel + KMZ (хөөлтийн зам, буудсан, суллагдсан цэг) + бүх зураг. QR: энэ судалгааг өөр утас руу дамжуулна.</p>
+    ${list.length ? html`<button class="fold-h" onClick=${() => fold("rep")}><span>📊 Товч тайлан</span><span>${closed.rep ? "▸" : "▾"}</span></button>${!closed.rep && html`<${Report} list=${list} />`}` : null}
     ${qr && html`<${QrShow} scope=${{ surveyId: id }} title=${"QR: " + s.name} onClose=${() => setQr(false)} />`}
     ${edit && html`<${SurveyModal} survey=${s} onClose=${() => setEdit(false)} />`}
   </div>`;
