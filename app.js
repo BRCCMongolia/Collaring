@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.8";
+const APP_VERSION = "0.5.9";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -99,7 +99,8 @@ const liveSurveys = () => Object.values(S.surveys).filter(s => !s.deletedAt).sor
 const startT = x => { for (const sp of STEPS) { const o = x.steps && x.steps[sp.k]; if (o && !o.skipped && o.t) return o.t; } return x.createdAt; };
 const byTime = (a, b) => startT(a) - startT(b) || a.createdAt - b.createdAt;
 const indsOf = sid => Object.values(S.inds).filter(x => x.surveyId === sid && !x.deletedAt).sort(byTime);
-const usedCollars = exceptId => new Set(Object.values(S.inds).filter(x => !x.deletedAt && x.collarId && x.id !== exceptId).map(x => x.collarId));
+// Амжилтгүй дууссан / эмч OK биш бодгалийн хүзүүвч амьтанд зүүгдээгүй тул чөлөөтэй гэж тооцно
+const usedCollars = exceptId => new Set(Object.values(S.inds).filter(x => !x.deletedAt && x.collarId && x.id !== exceptId && !failLabel(x) && !(x.vet && x.vet.ok === false)).map(x => x.collarId));
 
 /* ---------- гео ---------- */
 function haversine(a, b) { const R = 6371000, r = x => x * Math.PI / 180, dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
@@ -651,21 +652,23 @@ const locOf = x => [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "
 function byLoc(xs) { const g = new Map(); xs.forEach(x => { const l = locOf(x); if (!g.has(l)) g.set(l, []); g.get(l).push(x); }); return [...g.entries()]; }
 const avgOf = a => a.length ? a.reduce((p, v) => p + v, 0) / a.length : null;
 function Report({ list }) {
-  const col = list.filter(collared), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
-  const fails = {}; list.filter(x => !collared(x)).forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
-  const ms = list.map(metrics), dur = a => a == null ? "–" : fmtDur(a);
-  const chase = avgOf(ms.map(m => m.chase).filter(v => v != null)), km = avgOf(ms.map(m => m.chaseM).filter(v => v != null)), ind = avgOf(ms.map(m => m.induction).filter(v => v != null)), hand = avgOf(col.map(metrics).map(m => m.handling).filter(v => v != null));
+  const col = list.filter(collared), bad = list.filter(x => !collared(x)), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
+  const fails = {}; bad.forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
+  const dur = a => a == null ? "–" : fmtDur(a);
+  const av = (xs, k) => avgOf(xs.map(metrics).map(m => m[k]).filter(v => v != null));
+  const avgRows = (xs, ks) => html`<table class="kv"><tbody>${ks.map(([k, t]) => { const v = av(xs, k); return html`<tr><td>${t}</td><td>${k === "chaseM" ? (v == null ? "–" : (v / 1000).toFixed(2) + " км") : dur(v)}</td></tr>`; })}</tbody></table>`;
   const free = COLLARS.length - usedCollars().size;
   const bar = (n, t) => html`<div class="bar"><i style=${`width:${Math.min(100, t ? n / t * 100 : 0)}%`}></i></div>`;
   return html`<div class="card report">
+    <h3>✅ Амжилттай (${col.length})</h3>
     <div class="stats"><div class="stat"><b>${col.length} / ${tF + tM}</b><span>Хүзүүвчилсэн</span>${bar(col.length, tF + tM)}</div><div class="stat"><b>${F} / ${tF}</b><span>Эм</span>${bar(F, tF)}</div><div class="stat"><b>${M} / ${tM}</b><span>Эр</span>${bar(M, tM)}</div></div>
     ${col.length - F - M > 0 ? html`<div class="hint">${col.length - F - M} бодгалийн хүйс бичигдээгүй</div>` : null}
-    <h4>Байршлаар</h4>${col.length ? html`<table class="kv"><tbody>${byLoc(col).map(([l, ys]) => html`<tr><td>${l}</td><td><b>${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span></td></tr>`)}</tbody></table>` : html`<div class="muted small">Одоогоор алга</div>`}
-    <h4>Амжилтгүй, бусад (${list.length - col.length})</h4>${Object.keys(fails).length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>` : html`<div class="muted small">Алга</div>`}
-    <h4>Дундаж</h4><table class="kv"><tbody>
-      <tr><td>Хөөлтийн хугацаа</td><td>${dur(chase)}</td></tr><tr><td>Хөөсөн зай</td><td>${km == null ? "–" : (km / 1000).toFixed(2) + " км"}</td></tr>
-      <tr><td>Буудсанаас хэвтэх</td><td>${dur(ind)}</td></tr><tr><td>Хүзүүвчилсэн хугацаа</td><td>${dur(hand)}</td></tr></tbody></table>
-    <h4>Хүзүүвч</h4><table class="kv"><tbody><tr><td>Үлдсэн (зүүгээгүй)</td><td><b>${free}</b> / ${COLLARS.length}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
+    ${col.length ? html`<h4>Байршлаар</h4><table class="kv"><tbody>${byLoc(col).map(([l, ys]) => html`<tr><td>${l}</td><td><b>${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span></td></tr>`)}</tbody></table>
+    <h4>Дундаж</h4>${avgRows(col, [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Буудсанаас хэвтэх"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргээх тарианаас босох"], ["monitoring", "Хяналт (тарианаас)"]])}` : html`<div class="muted small mt">Одоогоор хүзүүвчлээгүй</div>`}
+    <h3 class="mt">✕ Амжилтгүй, явагдаж буй (${bad.length})</h3>
+    ${bad.length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>
+    <h4>Дундаж</h4>${avgRows(bad, [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Буудсанаас хэвтэх"]])}` : html`<div class="muted small">Алга</div>`}
+    <h3 class="mt">Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
   </div>`;
 }
 function SurveyView({ id }) {
