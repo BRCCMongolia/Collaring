@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.5.10";
+const APP_VERSION = "0.6.0";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -19,11 +19,12 @@ const STEPS = [
   { k: "vet", b: "Малын эмчийн үзлэг эхэллээ", s: "Эмчийн үзлэг эхэлсэн" },
   { k: "collarStart", b: "Хүзүүвчлэх эхэллээ", s: "Хүзүүвчилж эхэлсэн" },
   { k: "collarEnd", b: "Хүзүүвчилж дууслаа", s: "Хүзүүвчилж дууссан" },
-  { k: "antidote", b: "Сэргээх тариа хийлээ", s: "Сэргээх тариа (хяналт эхэлсэн)" },
+  { k: "antidote", b: "Сэргээх тариа хийлээ", s: "Сэргээх тариа хийсэн" },
+  { k: "release", b: "Сулласан", s: "Сулласан (хяналт эхэлсэн)" },
   { k: "monEnd", b: "Хяналт дууслаа", s: "Хяналт дууссан" },
 ];
-const STEP_ICON = { chaseStart: "▶", dart: "🎯", vet: "🩺", collarStart: "📡", collarEnd: "✔", antidote: "💉", monEnd: "🏁" };
-const STEP_SUB = { chaseStart: "секундомер + GPS зай", dart: "хөөлт зогсоно, хяналт эхэлнэ", vet: "үзлэг дуусмагц OK дарна", collarStart: "хүзүүвчлэх таймер эхэлнэ", collarEnd: "дараа нь сэргээх тариа", antidote: "сэргэлтийн хяналт эхэлнэ", monEnd: "бодгаль хаагдана" };
+const STEP_ICON = { chaseStart: "▶", dart: "🎯", vet: "🩺", collarStart: "📡", collarEnd: "✔", antidote: "💉", release: "🔓", monEnd: "🏁" };
+const STEP_SUB = { chaseStart: "секундомер + GPS зай", dart: "хөөлт зогсоно, хяналт эхэлнэ", vet: "үзлэг дуусмагц OK дарна", collarStart: "хүзүүвчлэх таймер эхэлнэ", collarEnd: "дараа нь сэргээх тариа", antidote: "сэргэх цаг эхэлнэ", release: "хяналтын цаг эхэлнэ", monEnd: "бодгаль хаагдана" };
 const STEP_IDX = Object.fromEntries(STEPS.map((s, i) => [s.k, i]));
 const SIDE = { dart: [["down", "Унасан"], ["recumbent", "Хэвтсэн"], ["approached", "Зогссон"]], antidote: [["stood", "Босов"], ["left", "Явсан"], ["joined", "Сүрэгтээ нийлсэн"]] };
 const SPECIES = ["Хулан", "Цагаан зээр", "Хар сүүлт зээр", "Аргаль", "Янгир"];
@@ -36,7 +37,7 @@ const WEATHER = ["Цэлмэг", "Үүлшсэн", "Салхитай", "Хүчт
 const BEHAV = ["Тайван", "Түгшүүртэй", "Түрэмгий", "Сүрэгтэй", "Ганцаараа"];
 const VETNOTE = ["Хэвийн", "Халуурсан", "Амьсгал удаашралтай", "Чичирсэн"];
 const ENDNOTE = ["Хэвийн суллагдсан", "Удаан сэргэсэн", "Доголон", "Сүрэгтээ нийлсэн"];
-const FAIL_LABEL = { chaseStart: "Хөөлт амжилтгүй", dart: "Буудсан амжилтгүй", vet: "Малын эмчийн хяналт амжилтгүй", collarStart: "Хүзүүвчлэлт амжилтгүй", collarEnd: "Хүзүүвчилсний дараа амжилтгүй", antidote: "Сэргэлт амжилтгүй" };
+const FAIL_LABEL = { chaseStart: "Хөөлт амжилтгүй", dart: "Буудсан амжилтгүй", vet: "Малын эмчийн хяналт амжилтгүй", collarStart: "Хүзүүвчлэлт амжилтгүй", collarEnd: "Хүзүүвчилсний дараа амжилтгүй", antidote: "Сэргэлт амжилтгүй", release: "Суллалтын дараа амжилтгүй" };
 const FAILNOTE = ["Амьтан зугтсан", "Сум оносонгүй", "Эм нөлөөлөөгүй", "Эмч зөвшөөрөөгүй", "Техникийн асуудал"];
 const AGES = ["1", "2", "3", "4", "5", "6", "7", "8+"];
 const BODY = ["Сайн", "Дунд", "Муу"];
@@ -191,7 +192,7 @@ const ChaseTracker = {
 };
 
 /* ---------- алхам бүртгэх ---------- */
-const curStep = x => STEPS.findIndex(s => !x.steps[s.k]);
+const curStep = x => x.steps.monEnd ? -1 : STEPS.findIndex(s => !x.steps[s.k]); // v0.5.11-өөс өмнөх бүртгэлд «Сулласан» алхам байхгүй
 let lastPress = 0;
 async function pressStep(id, k) {
   const t = Date.now();
@@ -201,7 +202,7 @@ async function pressStep(id, k) {
   if (k === "chaseStart") { ChaseTracker.start(id); }
   if (k === "dart" && ChaseTracker.indId === id) { const f = lastFix(); ChaseTracker.stop(); if (f) updInd(id, x => Object.assign(x.steps.dart, f)); }
   if (k === "collarStart") showToast(`${setting("handleMin")} минутын таймер эхэллээ`);
-  if (["collarStart", "antidote", "dart", "vet"].includes(k)) keepAwake(true);
+  if (["collarStart", "antidote", "release", "dart", "vet"].includes(k)) keepAwake(true);
   if (k === "monEnd") keepAwake(false);
   if (k === "dart" && S.inds[id].steps.dart.lat) return;
   const pos = lastFix() || await getPosition();
@@ -263,7 +264,7 @@ function metrics(x) {
     vet: diff(st(x, "vet"), (x.vet && x.vet.decidedAt) || st(x, "collarStart")),
     handling: diff(st(x, "collarStart"), st(x, "collarEnd")),
     standUp: diff(st(x, "antidote"), x.side && x.side.stood && x.side.stood.t),
-    monitoring: diff(st(x, "antidote"), st(x, "monEnd")),
+    monitoring: diff(st(x, "release") || st(x, "antidote"), st(x, "monEnd")),
     total: diff(first, st(x, "monEnd")),
   };
 }
@@ -405,7 +406,7 @@ async function saveFile(name, data, mime) {
 function buildSheets(list) {
   const vit = [], smp = [], trk = [], pho = [];
   for (const x of list) {
-    for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Үе шат": a.stage === "collarStart" ? "Хүзүүвчлэх үед" : a.stage === "vet" ? "Эмчийн үзлэг" : a.stage ? (STEPS[STEP_IDX[a.stage]] || {}).s || "" : "", "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
+    for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Үе шат": VGROUP_L[vgroup(a.stage)], "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
     for (const a of x.samples || []) smp.push({ "Дээжийн дугаар": a.code, "Төрөл": a.label, "Хүзүүвч / бодгаль": label(x), "Цаг": fmtDT(a.t) });
     for (const p of x.photos || []) pho.push({ "Файл": photoName(x, p), "Хүзүүвч / бодгаль": label(x), "Төрөл": p.kind === "collar" ? "Хүзүүвч" : "Бодгаль", "Цаг": fmtDT(p.t), "Тэмдэглэл": p.note || "" });
     for (const p of (x.chase && x.chase.track) || []) trk.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(p.t), N: p.lat, E: p.lng });
@@ -437,7 +438,7 @@ function buildKml(list, title) {
     k += `<Folder><name>${xmlEsc(label(x))}</name>`;
     k += pm(`${label(x)} — хөөлт эхэлсэн`, st2.chaseStart, "start", fmtDT(st2.chaseStart && st2.chaseStart.t));
     k += pm(`${label(x)} — буудсан`, st2.dart, "dart", desc);
-    k += pm(`${label(x)} — суллагдсан`, (st2.collarEnd && st2.collarEnd.lat ? st2.collarEnd : st2.monEnd), "release", desc);
+    k += pm(`${label(x)} — суллагдсан`, (st2.release && st2.release.lat ? st2.release : st2.collarEnd && st2.collarEnd.lat ? st2.collarEnd : st2.monEnd), "release", desc);
     const tr = (x.chase && x.chase.track) || [];
     if (tr.length > 1) k += `<Placemark><name>${xmlEsc(label(x))} — хөөлтийн зам</name><styleUrl>#chase</styleUrl><LineString><tessellate>1</tessellate><coordinates>${tr.map(p => `${p.lng},${p.lat},0`).join(" ")}</coordinates></LineString></Placemark>`;
     k += "</Folder>";
@@ -652,6 +653,7 @@ function SurveyModal({ onClose, survey }) {
 const locOf = x => [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "Байршил оруулаагүй";
 function byLoc(xs) { const g = new Map(); xs.forEach(x => { const l = locOf(x); if (!g.has(l)) g.set(l, []); g.get(l).push(x); }); return [...g.entries()]; }
 const avgOf = a => a.length ? a.reduce((p, v) => p + v, 0) / a.length : null;
+const AVG_ALL = [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Эм үйлчилсэн (буудсанаас хэвтэх)"], ["vet", "Малын эмчийн үзлэг"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргэсэн (тарианаас босох)"], ["monitoring", "Хяналт (сулласнаас)"]];
 function Report({ list }) {
   const col = list.filter(collared), bad = list.filter(x => !collared(x)), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
   const fails = {}; bad.forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
@@ -665,10 +667,10 @@ function Report({ list }) {
     <div class="stats"><div class="stat"><b>${col.length} / ${tF + tM}</b><span>Хүзүүвчилсэн</span>${bar(col.length, tF + tM)}</div><div class="stat"><b>${F} / ${tF}</b><span>Эм</span>${bar(F, tF)}</div><div class="stat"><b>${M} / ${tM}</b><span>Эр</span>${bar(M, tM)}</div></div>
     ${col.length - F - M > 0 ? html`<div class="hint">${col.length - F - M} бодгалийн хүйс бичигдээгүй</div>` : null}
     ${col.length ? html`<h4>Байршлаар</h4><table class="kv"><tbody>${byLoc(col).map(([l, ys]) => html`<tr><td>${l}</td><td><b>${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span></td></tr>`)}</tbody></table>
-    <h4>Дундаж</h4>${avgRows(col, [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Буудсанаас хэвтэх"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргээх тарианаас босох"], ["monitoring", "Хяналт (тарианаас)"]])}` : html`<div class="muted small mt">Одоогоор хүзүүвчлээгүй</div>`}
+    <h4>Дундаж</h4>${avgRows(col, AVG_ALL)}` : html`<div class="muted small mt">Одоогоор хүзүүвчлээгүй</div>`}
     <h3 class="mt">✕ Амжилтгүй, явагдаж буй (${bad.length})</h3>
     ${bad.length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>
-    <h4>Дундаж</h4>${avgRows(bad, [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Буудсанаас хэвтэх"]])}` : html`<div class="muted small">Алга</div>`}
+    <h4>Дундаж</h4>${avgRows(bad, AVG_ALL.filter(([k]) => av(bad, k) != null))}` : html`<div class="muted small">Алга</div>`}
     <h3 class="mt">Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}${collarHolders().map(y => html`<div class="muted small">${y.collarId} · ${S.surveys[y.surveyId].name} · №${y.no}${collared(y) ? "" : " (дуусаагүй)"}</div>`)}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
   </div>`;
 }
@@ -710,7 +712,7 @@ function SurveyView({ id }) {
 
 /* ---------- Бодгаль: товчоор урагшилдаг цагийн шугам ---------- */
 function IndView({ id }) {
-  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null); const [qr, setQr] = useState(false); const [showMiss, setShowMiss] = useState(false);
+  useStore(); const x = S.inds[id]; const [startPick, setStartPick] = useState(false); const [editT, setEditT] = useState(null); const [qr, setQr] = useState(false); const [showMiss, setShowMiss] = useState(false); const [editAll, setEditAll] = useState(false);
   const ci = x ? curStep(x) : -1; const running = x && ci >= 0;
   useTick(!!running);
   if (!x || x.deletedAt) return html`<div class="page"><${TopBar} title="Олдсонгүй" back="#/" /></div>`;
@@ -723,19 +725,30 @@ function IndView({ id }) {
   const startFrom = i => { updInd(id, y => { for (let j = 0; j < i; j++) y.steps[STEPS[j].k] = { skipped: true, reason: "start" }; }); setStartPick(false); pressStep(id, STEPS[i].k); };
   const del = () => { if (confirmAll([`${label(x)} бодгалийг устгах уу?`, "Үнэхээр устгах уу? (Хогийн саванд 30 хоног хадгалагдана)"])) { if (ChaseTracker.indId === id) ChaseTracker.stop(); updInd(id, y => { y.deletedAt = Date.now(); }); go("#/s/" + x.surveyId); } };
   const m = metrics(x);
+  const showCollar = !!(lastK && lastK !== "collarStart" && (x.steps.collarEnd || ci < 0) && x.vet && x.vet.ok !== false); // доор аль хэдийн харагддаг
+  const canEditAll = ci < 0 || ci > 2 || !!failLabel(x); // эмчийн үзлэгийн дараа (эсвэл дууссан)
   const renum = () => { const v = prompt("Бодгалийн дугаар (№)", x.no); const n = parseInt(v, 10); if (!v || !(n > 0)) return; if (indsOf(x.surveyId).some(y => y.id !== x.id && y.no === n)) return showToast(`№${n} өөр бодгальд байна`); updInd(id, y => { const pre = `${y.no}-`; y.no = n; if (!y.collarId) (y.samples || []).forEach(a => { if (a.code.startsWith(pre)) a.code = n + "-" + a.code.slice(pre.length); }); }); (S.inds[id].photos || []).forEach(p => queuePhoto(id, p, true)); showToast(`№${n} болголоо`); };
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} right=${html`<button class="iconbtn" style="font-size:.95rem;font-weight:800;width:auto;padding:0 10px" aria-label="Дугаар засах" onClick=${renum}>№ ✎</button>`} />
-    ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => setShowMiss(false)}>Дутуу: ${missing(x).join(", ")}<span> · дараа бөглөж болно</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
+    ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => { setEditAll(true); setShowMiss(false); }}>Дутуу: ${missing(x).join(", ")}<span> · энд дарж бөглөнө</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
+    ${canEditAll && html`<button class=${"btn block mb " + (editAll ? "pri" : "sec")} onClick=${() => setEditAll(!editAll)}>${editAll ? "✓ Засаж дууслаа" : "✎ Бүх талбарыг засах"}</button>`}
+    ${canEditAll && editAll && html`<div class="editall">
+      ${(x.steps.vet && !x.steps.vet.skipped) && html`<${VetPanel} x=${x} edit=${true} />`}
+      ${st(x, "collarStart") && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} group="collar" title="Заавал биш, хэд ч нэмж болно" /></div>`}
+      ${st(x, "collarStart") && !showCollar && html`<${CollarPanel} x=${x} compact=${true} />`}
+      ${(st(x, "antidote") || st(x, "release") || st(x, "monEnd")) && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (суллах үед)</h3><${Vitals} x=${x} group="release" title="Заавал биш, хэд ч нэмж болно" /></div>`}
+    </div>`}
     ${lastK !== "chaseStart" && html`<${DartCard} x=${x} />`}
 
     ${lastK === "chaseStart" && !x.chaseAborted && html`<${ChasePanel} x=${x} />`}
     ${lastK === "dart" && html`<${TimerPanel} title="Буудсанаас хойш (хяналт)" from=${x.steps.dart.t} />`}
-    ${(lastK === "dart" || lastK === "antidote") && html`<${SideButtons} x=${x} k=${lastK} />`}
+    ${(lastK === "dart" || lastK === "antidote" || lastK === "release") && html`<${SideButtons} x=${x} k=${lastK === "dart" ? "dart" : "antidote"} />`}
     ${lastK === "vet" && html`<${VetPanel} x=${x} />`}
-    ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} /></div><${CollarPanel} x=${x} />`}
-    ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш (хяналт)" from=${x.steps.antidote.t} />`}
+    ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} group="collar" title="Заавал биш, хэд ч нэмж болно" /></div><${CollarPanel} x=${x} />`}
+    ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш" from=${x.steps.antidote.t} />`}
+    ${lastK === "release" && html`<${TimerPanel} title="Сулласнаас хойш (хяналт)" from=${x.steps.release.t} />`}
+    ${(lastK === "collarEnd" || lastK === "antidote" || lastK === "release") && !editAll && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (суллах үед)</h3><${Vitals} x=${x} group="release" title="Заавал биш, хэд ч нэмж болно" /></div>`}
 
     ${next && !x.chaseAborted && html`<div>
       ${ci >= 1 && html`<${FailBtn} x=${x} />`}
@@ -749,7 +762,7 @@ function IndView({ id }) {
     </div>`}
 
     ${(ci < 0 || x.chaseAborted) && html`<${FinishPanel} x=${x} />`}
-    ${lastK && lastK !== "collarStart" && (x.steps.collarEnd || ci < 0) && x.vet && x.vet.ok !== false && html`<${CollarPanel} x=${x} compact=${true} />`}
+    ${showCollar && html`<${CollarPanel} x=${x} compact=${true} />`}
 
     <div class="sec-h"><h2>Цагийн шугам</h2>${Object.keys(x.steps).length ? html`<button class="btn ghost sm" onClick=${() => { if (confirm("Сүүлийн алхмыг буцаах уу?")) undoStep(id); }}>↶ Буцаах</button>` : null}</div>
     <div class="card"><ul class="tl">${STEPS.map((sp, i) => { const o = x.steps[sp.k]; const cls = o ? (o.skipped ? "skip" : "done") : i === ci ? "cur" : "";
@@ -760,8 +773,10 @@ function IndView({ id }) {
       </div></li>`; })}</ul>
       <div class="stats">
         ${m.chase != null && html`<div class="stat"><b>${fmtDur(m.chase)}</b><span>Хөөсөн хугацаа</span></div><div class="stat"><b>${kmOf(m.chaseM) || 0} км</b><span>Хөөсөн зай</span></div>${avgKmh(m) != null && html`<div class="stat"><b>${avgKmh(m)} км/ц</b><span>Дундаж хурд</span></div>`}${m.maxKmh != null && html`<div class="stat"><b>${m.maxKmh} км/ц</b><span>Дээд хурд</span></div>`}`}
-        ${m.induction != null && html`<div class="stat"><b>${fmtDur(m.induction)}</b><span>Буудсанаас хэвтэх</span></div>`}
+        ${m.induction != null && html`<div class="stat"><b>${fmtDur(m.induction)}</b><span>Эм үйлчилсэн</span></div>`}
+        ${m.vet != null && html`<div class="stat"><b>${fmtDur(m.vet)}</b><span>Эмчийн үзлэг</span></div>`}
         ${m.handling != null && html`<div class="stat"><b>${fmtDur(m.handling)}</b><span>Хүзүүвчилсэн</span></div>`}
+        ${m.standUp != null && html`<div class="stat"><b>${fmtDur(m.standUp)}</b><span>Сэргэсэн</span></div>`}
         ${m.monitoring != null && html`<div class="stat"><b>${fmtDur(m.monitoring)}</b><span>Хяналт</span></div>`}
         ${m.total != null && html`<div class="stat"><b>${fmtDur(m.total)}</b><span>Нийт</span></div>`}
       </div></div>
@@ -845,14 +860,17 @@ function SideButtons({ x, k }) {
 }
 
 // Амин үзүүлэлт: эмчийн үзлэг, хүзүүвчлэх үед хоёуланд нь бичнэ (удирдамж 6.5: тасралтгүй хянана)
-function Vitals({ x }) {
+const vgroup = st => ["collarStart"].includes(st) ? "collar" : ["collarEnd", "antidote", "release", "monEnd"].includes(st) ? "release" : "vet";
+const VGROUP_L = { vet: "Эмчийн үзлэг", collar: "Хүзүүвчлэх үед", release: "Суллах үед" };
+const VGROUP_ST = { vet: "vet", collar: "collarStart", release: "release" };
+function Vitals({ x, group, title }) {
   const v = x.vet || {}; const e0 = { resp: "", hr: "", temp: "", mucous: "" };
   const [vt, setVt] = useState(e0);
   const hot = vt.temp !== "" && +String(vt.temp).replace(",", ".") >= 40;
-  const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; const stage = curStep(x) >= 0 ? STEPS[Math.max(0, curStep(x) - 1)].k : "";
+  const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; const stage = group ? VGROUP_ST[group] : curStep(x) >= 0 ? STEPS[Math.max(0, curStep(x) - 1)].k : "";
     updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = [...(y.vet.vitals || []), { ...vt, temp: String(vt.temp).replace(",", "."), stage, t: Date.now() }]; }); setVt(e0); showToast("Үзүүлэлт нэмэгдлээ"); };
-  return html`<${Field} label="Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)">
-      ${(v.vitals || []).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · <b style=${+a.temp >= 40 ? "color:var(--bad)" : ""}>${a.temp || "-"}°C</b> · ${a.mucous || "-"}</span></div>`)}
+  return html`<${Field} label=${title || "Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)"}>
+      ${(v.vitals || []).filter(a => !group || vgroup(a.stage) === group).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · <b style=${+a.temp >= 40 ? "color:var(--bad)" : ""}>${a.temp || "-"}°C</b> · ${a.mucous || "-"}</span></div>`)}
       <div class="grid3 mt"><label><span class="mini">Амьсгал /мин</span><input class="inp" inputmode="numeric" placeholder="Амьсгал" value=${vt.resp} onInput=${e => setVt({ ...vt, resp: e.target.value })} /></label>
         <label><span class="mini">Зүрх /мин</span><input class="inp" inputmode="numeric" placeholder="Зүрх" value=${vt.hr} onInput=${e => setVt({ ...vt, hr: e.target.value })} /></label>
         <label><span class="mini">Биеийн хэм</span><input class="inp" inputmode="decimal" placeholder="Хэм °C" value=${vt.temp} onInput=${e => setVt({ ...vt, temp: e.target.value })} /></label></div>
@@ -860,17 +878,17 @@ function Vitals({ x }) {
       <div class="mt"><${Chips} opts=${MUCOUS} val=${vt.mucous} on=${val => setVt({ ...vt, mucous: val })} /></div>
       <button class="btn sec mt" onClick=${addVit}>+ Үзүүлэлт нэмэх</button><//>`;
 }
-function VetPanel({ x }) {
+function VetPanel({ x, edit }) {
   const v = x.vet || {}; const uv = (k, val) => updInd(x.id, y => { y.vet = { ...(y.vet || {}), [k]: val }; });
   return html`<div class="card"><h3 class="mb">Малын эмчийн үзлэг</h3>
     <${Field} label="Биеийн ерөнхий байдал" miss=${isMiss(x, "биеийн ерөнхий байдал")}><${Chips} opts=${BODY} val=${v.body} on=${val => uv("body", val)} /><//>
     <${Field} label="Ил харагдах шарх сорви"><${Chips} opts=${["Байхгүй", "Байгаа"]} val=${v.inj || (v.injuries ? "Байгаа" : "")} on=${val => uv("inj", val)} />
       ${(v.inj === "Байгаа" || (!v.inj && v.injuries)) && html`<div class="mt"><${TextIn} val=${v.injuries} on=${val => uv("injuries", val)} area=${true} ph="Хаана, ямар шарх сорви" /></div>`}<//>
-    <${Vitals} x=${x} />
+    <${Vitals} x=${x} group="vet" />
     <${Field} label="Эмчийн тэмдэглэл"><${QuickText} val=${v.notes} on=${val => uv("notes", val)} opts=${VETNOTE} area=${true} /><//>
-    <div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
-      <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>
-    ${v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй. Доорх «Сэргээх тариа хийлээ» товчоор үргэлжлүүлнэ.</div>`}
+    ${edit ? html`<div class="hint">Эмчийн шийдвэр: <b>${v.ok === true ? "✓ OK" : v.ok === false ? "✕ OK биш" : "–"}</b></div>` : html`<div class="row"><button class=${"btn " + (v.ok === true ? "okb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => vetDecision(x.id, true)}>✓ OK</button>
+      <button class=${"btn " + (v.ok === false ? "badb" : "ghost")} style="flex:1;min-height:64px;font-size:1.2rem" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(x.id, false); }}>✕ OK биш</button></div>`}
+    ${!edit && v.ok === false && html`<div class="hint">Хүзүүвчлэхгүй. Доорх «Сэргээх тариа хийлээ» товчоор үргэлжлүүлнэ.</div>`}
   </div>`;
 }
 
@@ -964,7 +982,7 @@ function FinishPanel({ x }) {
   return html`<div class="card"><h3 class="mb">${failLabel(x) || "Сэргэлт, суллалт"}</h3>
     ${!failLabel(x) && html`<${Field} label="Сэргэлт" miss=${isMiss(x, "сэргэлт")}><${Chips} opts=${RECOVERY} val=${x.recovery} on=${val => u("recovery", val)} cls=${x.recovery === "Муу" ? "badc" : "okc"} /><//>`}
     <${Field} label="Тэмдэглэл"><${QuickText} val=${x.notes} on=${val => u("notes", val)} opts=${failLabel(x) ? FAILNOTE : ENDNOTE} area=${true} ph=${failLabel(x) ? "Шалтгаан (эсвэл өөрөө бичнэ)" : undefined} /><//>
-    <div class="hint">Бодгаль хаагдлаа. Засах бол талбаруудыг шууд өөрчилнө, эсвэл «↶ Буцаах».</div>
+    <div class="hint">Бодгаль хаагдлаа. Бусад талбарыг засах бол дээрх «✎ Бүх талбарыг засах» товчийг дарна.</div>
   </div>`;
 }
 
