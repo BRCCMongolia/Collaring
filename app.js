@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.6.2";
+const APP_VERSION = "0.6.3";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -327,7 +327,7 @@ function indRow(x) {
   for (const [k, l] of [...SIDE.dart, ...SIDE.antidote]) r[l] = x.side && x.side[k] ? fmtHM(x.side[k].t) : "";
   Object.assign(r, { "Хөөсөн хугацаа (мин)": minOf(m.chase), "Хөөсөн зай (км)": kmOf(m.chaseM), "Дундаж хурд (км/ц)": avgKmh(m) ?? "", "Дээд хурд (км/ц)": m.maxKmh ?? "", "Үр дүн": failLabel(x) || (x.vet && x.vet.ok === false ? "Хүзүүвчлээгүй (эмч OK биш)" : x.status === "done" ? "Амжилттай" : ""), "Хөөлт зогсоосон": x.chaseAborted ? "тийм" : "", "Буудсанаас хэвтэх (мин)": minOf(m.induction), "Эмчийн үзлэг (мин)": minOf(m.vet), "Хүзүүвчилсэн хугацаа (мин)": minOf(m.handling), "Босох хүртэл (мин)": minOf(m.standUp), "Хяналт (мин)": minOf(m.monitoring), "Нийт (мин)": minOf(m.total),
     "Эмчийн дүгнэлт": v.ok === true ? "OK" : v.ok === false ? "OK биш" : "", "Биеийн ерөнхий байдал": v.body || "", "Ил харагдах шарх сорви": v.inj === "Байхгүй" ? "байхгүй" : v.injuries || (v.inj === "Байгаа" ? "байгаа" : ""), "Эмчийн тэмдэглэл": v.notes || "",
-    "Амин үзүүлэлт": (v.vitals || []).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
+    "Амин үзүүлэлт": (v.vitals || []).filter(a => !vitEmpty(a)).map(a => `${fmtHM(a.t)} амьс ${a.resp || "-"}, зүрх ${a.hr || "-"}, хэм ${a.temp || "-"}, салст ${a.mucous || "-"}`).join(" | "),
     "Хүйс": x.sex || "", "Нас": x.age || "", "Өсөлтийг тооцсон": x.growth ? "тийм" : "", "Өсөлтийн тэмдэглэл": x.ageNote || "", "Үржлийн байдал": x.repro || "", "Онцлох зан төрх": x.behaviour || "", "TRD соронз авсан": x.trd ? "тийм" : "", "Хоёр хуруу багтсан": x.fit2 ? "тийм" : "", "Нүд боосон, чих бөглөсөн": x.eyes ? "тийм" : "", "Хэвтүүлсэн байдал": x.lie || "", "Сумны тоо": x.dartN || "", "Сум туссан газар": x.dartSite === "Бусад" && x.dartSiteOther ? "Бусад: " + x.dartSiteOther : x.dartSite || "", "Буудсаны дараах тэмдэглэл": x.dartNote || "",
     "Дээж": (x.samples || []).map(a => a.code).join(", "), "Зураг (тоо)": (x.photos || []).length, "Сэргэлт": x.recovery || "", "Суллалт": x.released || "", "Тэмдэглэл": x.notes || "", "Төлөв": x.status || "", "Устгасан": x.deletedAt ? fmtDT(x.deletedAt) : "", "Дутуу": missing(x).join(", "), "Шинэчилсэн": fmtDT(x.updatedAt) });
   return r;
@@ -406,7 +406,7 @@ async function saveFile(name, data, mime) {
 function buildSheets(list) {
   const vit = [], smp = [], trk = [], pho = [];
   for (const x of list) {
-    for (const a of (x.vet && x.vet.vitals) || []) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Үе шат": VGROUP_L[vgroup(a.stage)], "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
+    for (const a of ((x.vet && x.vet.vitals) || []).filter(a => !vitEmpty(a))) vit.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(a.t), "Үе шат": VGROUP_L[vgroup(a.stage)], "Амьсгал (/мин)": +a.resp || a.resp || "", "Зүрх (/мин)": +a.hr || a.hr || "", "Биеийн хэм (°C)": +a.temp || a.temp || "", "Салст": a.mucous || "" });
     for (const a of x.samples || []) smp.push({ "Дээжийн дугаар": a.code, "Төрөл": a.label, "Хүзүүвч / бодгаль": label(x), "Цаг": fmtDT(a.t) });
     for (const p of x.photos || []) pho.push({ "Файл": photoName(x, p), "Хүзүүвч / бодгаль": label(x), "Төрөл": p.kind === "collar" ? "Хүзүүвч" : "Бодгаль", "Цаг": fmtDT(p.t), "Тэмдэглэл": p.note || "" });
     for (const p of (x.chase && x.chase.track) || []) trk.push({ "Хүзүүвч / бодгаль": label(x), "Цаг": fmtHM(p.t), N: p.lat, E: p.lng });
@@ -654,6 +654,37 @@ const locOf = x => [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "
 function byLoc(xs) { const g = new Map(); xs.forEach(x => { const l = locOf(x); if (!g.has(l)) g.set(l, []); g.get(l).push(x); }); return [...g.entries()]; }
 const avgOf = a => a.length ? a.reduce((p, v) => p + v, 0) / a.length : null;
 const AVG_ALL = [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Эм үйлчилсэн (буудсанаас хэвтэх)"], ["vet", "Малын эмчийн үзлэг"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргэсэн (тарианаас босох)"], ["monitoring", "Хяналт (сулласнаас)"]];
+const vitTxt = a => [a.resp && `амьс ${a.resp}`, a.hr && `зүрх ${a.hr}`, a.temp && `хэм ${a.temp}°C`, a.mucous].filter(Boolean).join(", ");
+function CollarDetail({ y }) {
+  const m = metrics(y), sd = y.side || {}, vit = ((y.vet && y.vet.vitals) || []).filter(a => !vitEmpty(a));
+  const tr = (l, v) => v == null || v === "" ? null : html`<tr><td>${l}</td><td>${v}</td></tr>`;
+  return html`<div class="cdet"><table class="kv"><tbody>
+    ${tr("Байршил", locOf(y))}${tr("Хүзүүвч / IMEI", [y.collarId, y.imei].filter(Boolean).join(" / "))}
+    <tr><td colspan="2"><b>Хугацаа</b></td></tr>
+    ${tr("Хөөсөн зай", m.chaseM ? kmOf(m.chaseM) + " км" : "–")}${tr("Дундаж / дээд хурд", [avgKmh(m), m.maxKmh].map(v => v == null ? "–" : v).join(" / ") + " км/ц")}
+    ${DUR_L.map(([k, l]) => tr(l, html`<b>${m[k] == null ? "–" : fmtDur(m[k])}</b>`))}
+    <tr><td colspan="2"><b>Цаг</b></td></tr>
+    ${STEPS.map(sp => { const o = y.steps[sp.k]; return o && !o.skipped ? tr(sp.s, fmtHM(o.t)) : null; })}
+    ${[...SIDE.dart, ...SIDE.antidote].map(([k, l]) => sd[k] ? tr(l, fmtHM(sd[k].t)) : null)}
+    <tr><td colspan="2"><b>Бусад</b></td></tr>
+    ${tr("Буудсан сум", [y.dartN, y.dartSite === "Бусад" && y.dartSiteOther ? "Бусад: " + y.dartSiteOther : y.dartSite].filter(Boolean).join(", "))}
+    ${tr("Биеийн байдал", y.vet && y.vet.body)}${vit.map(a => tr(`${VGROUP_L[vgroup(a.stage)]} ${fmtHM(a.t).slice(0, 5)}`, vitTxt(a)))}
+    ${tr("Дээж", (y.samples || []).map(a => a.code).join(", "))}${tr("Сэргэлт", y.recovery)}
+    ${tr("Тэмдэглэл", [y.dartNote, y.vet && y.vet.notes, y.notes].filter(Boolean).join(" · "))}
+  </tbody></table><button class="btn ghost sm mt" onClick=${() => go("#/i/" + y.id)}>Бодгаль руу орох →</button></div>`;
+}
+// Багт илгээх энгийн текст тайлан
+function reportText(list) {
+  const s = S.surveys[(list[0] || {}).surveyId] || {}; const col = list.filter(collared); const d = v => v == null ? "–" : fmtDur(v);
+  const L = [`${s.name || "Судалгаа"} — товч тайлан (${fmtDT(Date.now())})`, `Хүзүүвчилсэн: ${col.length} (эм ${col.filter(x => x.sex === "Эм").length}, эр ${col.filter(x => x.sex === "Эр").length}) · нийт оролдлого ${list.length}`, ""];
+  for (const [l, ys] of byLoc(col)) { L.push(`📍 ${l} — ${ys.length}`); for (const y of [...ys].sort((a, b) => collarSeq(a) - collarSeq(b))) { const m = metrics(y);
+    L.push(`• ${label(y)} (${[y.sex, y.age ? y.age + " нас" : ""].filter(Boolean).join(", ")})`, `  хөөлт ${d(m.chase)}${m.chaseM ? ", " + kmOf(m.chaseM) + " км" : ""} · эм үйлчилсэн ${d(m.induction)} · эмчийн үзлэг ${d(m.vet)} · хүзүүвчилсэн ${d(m.handling)} · сэргэсэн ${d(m.standUp)} · хяналт ${d(m.monitoring)}`); } L.push(""); }
+  const av = k => { const v = avgOf(col.map(metrics).map(m => m[k]).filter(v => v != null)); return k === "chaseM" ? (v == null ? "–" : (v / 1000).toFixed(2) + " км") : d(v); };
+  if (col.length) L.push("Дундаж: " + AVG_ALL.map(([k, l]) => `${l.replace(/ \(.*\)/, "")} ${av(k)}`).join(" · "));
+  const bad = list.filter(x => !collared(x)); if (bad.length) L.push(`Амжилтгүй / явагдаж буй: ${bad.length}`);
+  return L.join("\n");
+}
+async function shareReport(list) { const t = reportText(list); if (navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e && e.name === "AbortError") return; } } try { await navigator.clipboard.writeText(t); showToast("Тайлан хуулагдлаа. Messenger-т буулгана."); } catch (e) { showToast("Хуулж чадсангүй"); } }
 function Report({ list, closed = {}, fold = () => { } }) {
   const col = list.filter(collared), bad = list.filter(x => !collared(x)), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
   const fails = {}; bad.forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
@@ -663,9 +694,11 @@ function Report({ list, closed = {}, fold = () => { } }) {
   const free = COLLARS.length - usedCollars().size;
   const bar = (n, t) => html`<div class="bar"><i style=${`width:${Math.min(100, t ? n / t * 100 : 0)}%`}></i></div>`;
   const fh = (k, t, cls) => html`<button class=${"rep-h" + (cls ? " " + cls : "")} onClick=${() => fold(k)}><span>${t}</span><span>${closed[k] ? "▸" : "▾"}</span></button>`;
-  const crow = y => { const m = metrics(y); const d = v => v == null ? "–" : fmtDur(v); const parts = [`хөөлт ${d(m.chase)}`, `зай ${m.chaseM ? kmOf(m.chaseM) + " км" : "–"}`, `эм үйлчилсэн ${d(m.induction)}`, `эмчийн үзлэг ${d(m.vet)}`, `хүзүүвчилсэн ${d(m.handling)}`, `сэргэсэн ${d(m.standUp)}`, `хяналт ${d(m.monitoring)}`];
-    return html`<button class="crow" onClick=${() => go("#/i/" + y.id)}><b>${label(y)}</b><div class="small">${[y.sex, y.age ? y.age + " нас" : "", fmtDT(startT(y))].filter(Boolean).join(" · ")}</div>${parts.length ? html`<div class="muted small">${parts.join(" · ")}</div>` : null}</button>`; };
+  const [openC, setOpenC] = useState({});
+  const crow = y => { const m = metrics(y), o = openC[y.id];
+    return html`<div class="crow"><button class="crow-h" onClick=${() => setOpenC({ ...openC, [y.id]: !o })}><span><b>${label(y)}</b><div class="small">${[y.sex, y.age ? y.age + " нас" : "", fmtDT(startT(y))].filter(Boolean).join(" · ")}</div><div class="muted small">хөөлт ${m.chase == null ? "–" : fmtDur(m.chase)} · хүзүүвчилсэн ${m.handling == null ? "–" : fmtDur(m.handling)}</div></span><span>${o ? "▾" : "▸ дэлгэрэнгүй"}</span></button>${o && html`<${CollarDetail} y=${y} />`}</div>`; };
   return html`<div class="card report">
+    <button class="btn pri block mb" onClick=${() => shareReport(list)}>📤 Тайлан багт илгээх</button>
     ${fh("repS", `✅ Амжилттай (${col.length})`)}
     ${!closed.repS && html`<div>
     <div class="stats"><div class="stat"><b>${col.length} / ${tF + tM}</b><span>Хүзүүвчилсэн</span>${bar(col.length, tF + tM)}</div><div class="stat"><b>${F} / ${tF}</b><span>Эм</span>${bar(F, tF)}</div><div class="stat"><b>${M} / ${tM}</b><span>Эр</span>${bar(M, tM)}</div></div>
@@ -741,6 +774,7 @@ function IndView({ id }) {
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
     ${canEditAll && html`<button class=${"btn block mb " + (editAll ? "pri" : "sec")} onClick=${() => setEditAll(!editAll)}>${editAll ? "✓ Засаж дууслаа" : "✎ Бүх талбарыг засах"}</button>`}
     ${canEditAll && editAll && html`<div class="editall">
+      <${TimesCard} x=${x} onEdit=${setEditT} />
       ${(x.steps.vet && !x.steps.vet.skipped) && html`<${VetPanel} x=${x} edit=${true} />`}
       ${st(x, "collarStart") && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} group="collar" title="Заавал биш, хэд ч нэмж болно" /></div>`}
       ${st(x, "collarStart") && !showCollar && html`<${CollarPanel} x=${x} compact=${true} />`}
@@ -798,10 +832,23 @@ function IndView({ id }) {
   </div>`;
 }
 
+const DUR_L = [["chase", "Хөөлтийн хугацаа"], ["induction", "Эм үйлчилсэн (буудсанаас хэвтэх)"], ["vet", "Малын эмчийн үзлэг"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргэсэн (тарианаас босох)"], ["monitoring", "Хяналт (сулласнаас)"], ["total", "Нийт"]];
+function TimesCard({ x, onEdit }) {
+  const m = metrics(x); const side = x.side || {};
+  const mark = sk => updInd(x.id, y => { y.side = y.side || {}; y.side[sk] = { t: Date.now() }; });
+  const sideRow = ([sk, l]) => html`<tr><td class="muted">↳ ${l}</td><td>${side[sk] ? html`<button class="tm" onClick=${() => onEdit("side:" + sk)}>${fmtHM(side[sk].t)}</button> <button class="iconbtn" style="height:28px;display:inline-flex" aria-label="Хасах" onClick=${() => { if (confirm(l + " цагийг хасах уу?")) updInd(x.id, y => { delete y.side[sk]; }); }}>✕</button>` : html`<button class="btn ghost sm" onClick=${() => { mark(sk); onEdit("side:" + sk); }}>+ цаг оруулах</button>`}</td></tr>`;
+  return html`<div class="card"><h3 class="mb">Цаг, хугацаа</h3>
+    <table class="kv"><tbody>${STEPS.map(sp => { const o = x.steps[sp.k]; return html`<tr><td>${sp.s}</td><td>${o && !o.skipped ? html`<button class="tm" onClick=${() => onEdit(sp.k)}>${fmtHM(o.t)}</button>` : html`<span class="muted">${o ? "алгассан" : "–"}</span>`}</td></tr>
+      ${sp.k === "dart" && o && !o.skipped ? SIDE.dart.map(sideRow) : null}${sp.k === "antidote" && o && !o.skipped ? SIDE.antidote.map(sideRow) : null}`; })}</tbody></table>
+    <h4 class="mt">Хугацаа (мин:сек)</h4>
+    <table class="kv"><tbody><tr><td>Хөөсөн зай</td><td>${m.chaseM ? kmOf(m.chaseM) + " км" : "–"}</td></tr>${DUR_L.map(([k, l]) => html`<tr><td>${l}</td><td><b>${m[k] == null ? "–" : fmtDur(m[k])}</b></td></tr>`)}</tbody></table>
+    <div class="hint">Цаг дээр дарж засна.</div></div>`;
+}
+const SIDE_L = Object.fromEntries([...SIDE.dart, ...SIDE.antidote]);
 function EditTime({ x, k, onClose }) {
-  const o = x.steps[k]; const d = new Date(o.t); const [v, setV] = useState(`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`);
-  const save = () => { const [h, mi, se] = v.split(":").map(Number); const n = new Date(o.t); n.setHours(h, mi || 0, se || 0, 0); updInd(x.id, y => { y.steps[k].t = n.getTime(); y.steps[k].edited = true; }); onClose(); };
-  return html`<${Modal} title=${"Цаг засах: " + STEPS[STEP_IDX[k]].s} onClose=${onClose}><input class="inp" type="time" step="1" value=${v} onInput=${e => setV(e.target.value)} /><button class="btn pri block mt" onClick=${save}>Хадгалах</button><//>`;
+  const sk = k.startsWith("side:") ? k.slice(5) : null; const o = sk ? (x.side || {})[sk] : x.steps[k]; const d = new Date(o.t); const [v, setV] = useState(`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`);
+  const save = () => { const [h, mi, se] = v.split(":").map(Number); const n = new Date(o.t); n.setHours(h, mi || 0, se || 0, 0); updInd(x.id, y => { const t = sk ? y.side[sk] : y.steps[k]; t.t = n.getTime(); t.edited = true; }); onClose(); };
+  return html`<${Modal} title=${"Цаг засах: " + (sk ? SIDE_L[sk] : STEPS[STEP_IDX[k]].s)} onClose=${onClose}><input class="inp" type="time" step="1" value=${v} onInput=${e => setV(e.target.value)} /><button class="btn pri block mt" onClick=${save}>Хадгалах</button><//>`;
 }
 
 // Бичиж хайдаг сонголт: "Өм" гэхэд Өмнөговь гарна
@@ -870,20 +917,28 @@ function SideButtons({ x, k }) {
 const vgroup = st => ["collarStart"].includes(st) ? "collar" : ["collarEnd", "antidote", "release", "monEnd"].includes(st) ? "release" : "vet";
 const VGROUP_L = { vet: "Эмчийн үзлэг", collar: "Хүзүүвчлэх үед", release: "Суллах үед" };
 const VGROUP_ST = { vet: "vet", collar: "collarStart", release: "release" };
+// Амин үзүүлэлт: бичмэгц хадгалагдана (товч дарах шаардлагагүй), хуучин бичлэг бүр засагдана
+const vitEmpty = a => !a.resp && !a.hr && !a.temp && !a.mucous;
 function Vitals({ x, group, title }) {
-  const v = x.vet || {}; const e0 = { resp: "", hr: "", temp: "", mucous: "" };
-  const [vt, setVt] = useState(e0);
-  const hot = vt.temp !== "" && +String(vt.temp).replace(",", ".") >= 40;
-  const addVit = () => { if (!vt.resp && !vt.hr && !vt.temp && !vt.mucous) return; const stage = group ? VGROUP_ST[group] : curStep(x) >= 0 ? STEPS[Math.max(0, curStep(x) - 1)].k : "";
-    updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = [...(y.vet.vitals || []), { ...vt, temp: String(vt.temp).replace(",", "."), stage, t: Date.now() }]; }); setVt(e0); showToast("Үзүүлэлт нэмэгдлээ"); };
-  return html`<${Field} label=${title || "Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)"}>
-      ${(v.vitals || []).filter(a => !group || vgroup(a.stage) === group).map(a => html`<div class="sample"><span>${fmtHM(a.t).slice(0, 5)}</span><span class="small">амьс ${a.resp || "-"} · зүрх ${a.hr || "-"} · <b style=${+a.temp >= 40 ? "color:var(--bad)" : ""}>${a.temp || "-"}°C</b> · ${a.mucous || "-"}</span></div>`)}
-      <div class="grid3 mt"><label><span class="mini">Амьсгал /мин</span><input class="inp" inputmode="numeric" placeholder="Амьсгал" value=${vt.resp} onInput=${e => setVt({ ...vt, resp: e.target.value })} /></label>
-        <label><span class="mini">Зүрх /мин</span><input class="inp" inputmode="numeric" placeholder="Зүрх" value=${vt.hr} onInput=${e => setVt({ ...vt, hr: e.target.value })} /></label>
-        <label><span class="mini">Биеийн хэм</span><input class="inp" inputmode="decimal" placeholder="Хэм °C" value=${vt.temp} onInput=${e => setVt({ ...vt, temp: e.target.value })} /></label></div>
+  const all = (x.vet && x.vet.vitals) || [];
+  const idx = all.map((a, i) => i).filter(i => !group || vgroup(all[i].stage) === group);
+  const stageNow = () => group ? VGROUP_ST[group] : curStep(x) >= 0 ? STEPS[Math.max(0, curStep(x) - 1)].k : "";
+  const set = (i, k, val) => updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = y.vet.vitals || []; if (k === "temp") val = String(val).replace(",", ".");
+    if (i == null) y.vet.vitals.push({ resp: "", hr: "", temp: "", mucous: "", stage: stageNow(), t: Date.now(), [k]: val }); else y.vet.vitals[i] = { ...y.vet.vitals[i], [k]: val }; });
+  const add = () => updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = [...(y.vet.vitals || []), { resp: "", hr: "", temp: "", mucous: "", stage: stageNow(), t: Date.now() }]; });
+  const del = i => { if (confirm("Энэ үзүүлэлтийг устгах уу?")) updInd(x.id, y => { y.vet.vitals.splice(i, 1); }); };
+  const row = (i, n) => { const a = i == null ? {} : all[i]; const hot = a.temp !== "" && a.temp != null && +a.temp >= 40;
+    return html`<div class="vit" key=${i == null ? "new" : a.t + "-" + i}>
+      <div class="row between"><span class="mini">${i == null ? "Шинэ" : `${n}. ${fmtHM(a.t).slice(0, 5)}`}</span>${i != null && html`<button class="iconbtn" style="height:30px" aria-label="Устгах" onClick=${() => del(i)}>✕</button>`}</div>
+      <div class="grid3"><label><span class="mini">Амьсгал /мин</span><input class="inp" inputmode="numeric" placeholder="Амьсгал" value=${a.resp ?? ""} onInput=${e => set(i, "resp", e.target.value)} /></label>
+        <label><span class="mini">Зүрх /мин</span><input class="inp" inputmode="numeric" placeholder="Зүрх" value=${a.hr ?? ""} onInput=${e => set(i, "hr", e.target.value)} /></label>
+        <label><span class="mini">Биеийн хэм</span><input class="inp" inputmode="decimal" placeholder="Хэм °C" value=${a.temp ?? ""} onInput=${e => set(i, "temp", e.target.value)} /></label></div>
       ${hot && html`<div class="panel warn mt">⚠ Биеийн хэм 40 °C-ээс дээш байна. Малын эмчид мэдэгдэнэ.</div>`}
-      <div class="mt"><${Chips} opts=${MUCOUS} val=${vt.mucous} on=${val => setVt({ ...vt, mucous: val })} /></div>
-      <button class="btn sec mt" onClick=${addVit}>+ Үзүүлэлт нэмэх</button><//>`;
+      <div class="mt"><${Chips} opts=${MUCOUS} val=${a.mucous} on=${val => set(i, "mucous", val)} /></div></div>`; };
+  return html`<${Field} label=${title || "Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)"}>
+      ${idx.length ? idx.map((i, n) => row(i, n + 1)) : row(null)}
+      <button class="btn sec mt" onClick=${add}>+ Дахин хэмжилт нэмэх</button>
+      <div class="hint">Бичмэгц хадгалагдана.</div><//>`;
 }
 function VetPanel({ x, edit }) {
   const v = x.vet || {}; const uv = (k, val) => updInd(x.id, y => { y.vet = { ...(y.vet || {}), [k]: val }; });
