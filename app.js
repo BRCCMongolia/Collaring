@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.6.1";
+const APP_VERSION = "0.6.2";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -663,7 +663,7 @@ function Report({ list, closed = {}, fold = () => { } }) {
   const free = COLLARS.length - usedCollars().size;
   const bar = (n, t) => html`<div class="bar"><i style=${`width:${Math.min(100, t ? n / t * 100 : 0)}%`}></i></div>`;
   const fh = (k, t, cls) => html`<button class=${"rep-h" + (cls ? " " + cls : "")} onClick=${() => fold(k)}><span>${t}</span><span>${closed[k] ? "▸" : "▾"}</span></button>`;
-  const crow = y => { const m = metrics(y); const parts = [m.chase != null && `хөөлт ${fmtDur(m.chase)}${m.chaseM ? `, ${kmOf(m.chaseM)} км` : ""}`, m.induction != null && `эм үйлчилсэн ${fmtDur(m.induction)}`, m.vet != null && `эмч ${fmtDur(m.vet)}`, m.handling != null && `хүзүүвчилсэн ${fmtDur(m.handling)}`, m.standUp != null && `сэргэсэн ${fmtDur(m.standUp)}`, m.monitoring != null && `хяналт ${fmtDur(m.monitoring)}`].filter(Boolean);
+  const crow = y => { const m = metrics(y); const d = v => v == null ? "–" : fmtDur(v); const parts = [`хөөлт ${d(m.chase)}`, `зай ${m.chaseM ? kmOf(m.chaseM) + " км" : "–"}`, `эм үйлчилсэн ${d(m.induction)}`, `эмчийн үзлэг ${d(m.vet)}`, `хүзүүвчилсэн ${d(m.handling)}`, `сэргэсэн ${d(m.standUp)}`, `хяналт ${d(m.monitoring)}`];
     return html`<button class="crow" onClick=${() => go("#/i/" + y.id)}><b>${label(y)}</b><div class="small">${[y.sex, y.age ? y.age + " нас" : "", fmtDT(startT(y))].filter(Boolean).join(" · ")}</div>${parts.length ? html`<div class="muted small">${parts.join(" · ")}</div>` : null}</button>`; };
   return html`<div class="card report">
     ${fh("repS", `✅ Амжилттай (${col.length})`)}
@@ -737,7 +737,7 @@ function IndView({ id }) {
   const renum = () => { const v = prompt("Бодгалийн дугаар (№)", x.no); const n = parseInt(v, 10); if (!v || !(n > 0)) return; if (indsOf(x.surveyId).some(y => y.id !== x.id && y.no === n)) return showToast(`№${n} өөр бодгальд байна`); updInd(id, y => { const pre = `${y.no}-`; y.no = n; if (!y.collarId) (y.samples || []).forEach(a => { if (a.code.startsWith(pre)) a.code = n + "-" + a.code.slice(pre.length); }); }); (S.inds[id].photos || []).forEach(p => queuePhoto(id, p, true)); showToast(`№${n} болголоо`); };
   return html`<div class="page">
     <${TopBar} title=${label(x)} sub=${`${s.name || ""} · №${x.no}`} back=${"#/s/" + x.surveyId} right=${html`<button class="iconbtn" style="font-size:.95rem;font-weight:800;width:auto;padding:0 10px" aria-label="Дугаар засах" onClick=${renum}>№ ✎</button>`} />
-    ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div class="missing" onClick=${() => { setEditAll(true); setShowMiss(false); }}>Дутуу: ${missing(x).join(", ")}<span> · энд дарж бөглөнө</span></div>` : html`<button class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
+    ${(ci < 0 || ci > 1) && missing(x).length ? (ci < 0 || ci >= 6 || showMiss ? html`<div key="miss" class="missing" onClick=${() => { setEditAll(true); setShowMiss(false); }}>Дутуу: ${missing(x).join(", ")}<span> · энд дарж бөглөнө</span></div>` : html`<button key="missm" class="missing mini" onClick=${() => setShowMiss(true)}>Дутуу ${missing(x).length} · дараа бөглөнө ▾</button>`) : null}
     ${ci === 0 && !startPick && html`<${PlaceCard} x=${x} />`}
     ${canEditAll && html`<button class=${"btn block mb " + (editAll ? "pri" : "sec")} onClick=${() => setEditAll(!editAll)}>${editAll ? "✓ Засаж дууслаа" : "✎ Бүх талбарыг засах"}</button>`}
     ${canEditAll && editAll && html`<div class="editall">
@@ -755,16 +755,16 @@ function IndView({ id }) {
     ${lastK === "collarStart" && html`<${TimerPanel} title="Хүзүүвчилж эхэлснээс хойш" from=${x.steps.collarStart.t} limitMin=${setting("handleMin")} /><div class="card"><h3 class="mb">Амин үзүүлэлт (хүзүүвчлэх үед)</h3><${Vitals} x=${x} group="collar" title="Заавал биш, хэд ч нэмж болно" /></div><${CollarPanel} x=${x} />`}
     ${lastK === "antidote" && html`<${TimerPanel} title="Сэргээх тариа хийснээс хойш" from=${x.steps.antidote.t} />`}
     ${lastK === "release" && html`<${TimerPanel} title="Сулласнаас хойш (хяналт)" from=${x.steps.release.t} />`}
-    ${(lastK === "collarEnd" || lastK === "antidote" || lastK === "release") && !editAll && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (суллах үед)</h3><${Vitals} x=${x} group="release" title="Заавал биш, хэд ч нэмж болно" /></div>`}
+    ${(lastK === "antidote" || lastK === "release") && !editAll && html`<div class="card"><h3 class="mb">Амин үзүүлэлт (суллах үед)</h3><${Vitals} x=${x} group="release" title="Заавал биш, хэд ч нэмж болно" /></div>`}
 
-    ${next && !x.chaseAborted && html`<div>
+    ${next && !x.chaseAborted && html`<div key="nextw">
       ${ci >= 1 && html`<${FailBtn} x=${x} />`}
       ${ci === 0 && html`<button class="btn sec block mt" onClick=${() => setStartPick(!startPick)}>Өөр алхмаас эхлэх</button>`}
       ${startPick && html`<div class="card mt">${STEPS.slice(1).map((sp, i) => html`<button class="btn ghost block mb" onClick=${() => startFrom(i + 1)}>${sp.b}</button>`)}</div>`}
-      <div class="nextbar"><div class="in">
+      <div class="nextbar" onClick=${e => e.stopPropagation()}><div class="in">
         ${vetBlock && html`<div class="hint center">Малын эмчийн шийдвэр:</div><div class="row vetbar"><button class="btn okb bigbtn" onClick=${() => vetDecision(id, true)}>✓ OK<span class="sub">хүзүүвчилнэ</span></button><button class="btn badb bigbtn" onClick=${() => { if (confirm("OK биш: хүзүүвчлэхгүй суллана. Тийм үү?")) vetDecision(id, false); }}>✕ OK биш<span class="sub">хүзүүвчлэхгүй</span></button></div>`}
         ${collarBlock && html`<div class="hint center" style="color:var(--bad);font-weight:650">Хүзүүвчний дугаарыг заавал бичнэ.</div>`}
-        ${!vetBlock && html`<button class=${"btn pri bigbtn" + (next.k === "chaseStart" ? " go" : next.k === "dart" ? " shoot" : "")} disabled=${blocked} onClick=${() => { pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span><span class="ico">${STEP_ICON[next.k]}</span>${next.b}<span class="sub">${STEP_SUB[next.k]}</span></button>`}
+        ${!vetBlock && html`<button class=${"btn pri bigbtn" + (next.k === "chaseStart" ? " go" : next.k === "dart" ? " shoot" : "")} disabled=${blocked} onClick=${e => { e.stopPropagation(); pressStep(id, next.k); scrollTo({ top: 0, behavior: "smooth" }); }}><span class="stepno">${ci + 1}/${STEPS.length}</span><span class="ico">${STEP_ICON[next.k]}</span>${next.b}<span class="sub">${STEP_SUB[next.k]}</span></button>`}
       </div></div>
     </div>`}
 
@@ -982,7 +982,7 @@ function CollarPanel({ x, compact }) {
 function FailBtn({ x }) {
   const [arm, setArm] = useState(false); const i = curStep(x); const stage = i > 0 ? STEPS[i - 1].k : "chaseStart";
   useEffect(() => { if (!arm) return; const t = setTimeout(() => setArm(false), 4000); return () => clearTimeout(t); }, [arm]);
-  return html`<div class="center mt"><button class=${"btn sm " + (arm ? "badb" : "ghost")} onClick=${() => { if (arm) { setArm(false); failInd(x.id); } else setArm(true); }}>${arm ? `Дахин дарж батлах: ${FAIL_LABEL[stage]}` : "✕ Амжилтгүй дуусгах"}</button></div>`;
+  return html`<div class="center mt"><button class=${"btn sm " + (arm ? "badb" : "ghost")} onClick=${e => { e.stopPropagation(); if (arm) { setArm(false); failInd(x.id); } else setArm(true); }}>${arm ? `Дахин дарж батлах: ${FAIL_LABEL[stage]}` : "✕ Амжилтгүй дуусгах"}</button></div>`;
 }
 function FinishPanel({ x }) {
   const u = (k, val) => updInd(x.id, y => { y[k] = val; });
