@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.6.1";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -654,7 +654,7 @@ const locOf = x => [x.aimag, x.soum, x.place].filter(Boolean).join(" › ") || "
 function byLoc(xs) { const g = new Map(); xs.forEach(x => { const l = locOf(x); if (!g.has(l)) g.set(l, []); g.get(l).push(x); }); return [...g.entries()]; }
 const avgOf = a => a.length ? a.reduce((p, v) => p + v, 0) / a.length : null;
 const AVG_ALL = [["chase", "Хөөлтийн хугацаа"], ["chaseM", "Хөөсөн зай"], ["induction", "Эм үйлчилсэн (буудсанаас хэвтэх)"], ["vet", "Малын эмчийн үзлэг"], ["handling", "Хүзүүвчилсэн хугацаа"], ["standUp", "Сэргэсэн (тарианаас босох)"], ["monitoring", "Хяналт (сулласнаас)"]];
-function Report({ list }) {
+function Report({ list, closed = {}, fold = () => { } }) {
   const col = list.filter(collared), bad = list.filter(x => !collared(x)), F = col.filter(x => x.sex === "Эм").length, M = col.filter(x => x.sex === "Эр").length, tF = setting("targetF"), tM = setting("targetM");
   const fails = {}; bad.forEach(x => { const k = failLabel(x) || (x.vet && x.vet.ok === false ? "Эмч OK биш (хүзүүвчлээгүй)" : x.status === "done" ? "Хүзүүвчгүй дууссан" : "Явагдаж буй"); fails[k] = (fails[k] || 0) + 1; });
   const dur = a => a == null ? "–" : fmtDur(a);
@@ -662,16 +662,23 @@ function Report({ list }) {
   const avgRows = (xs, ks) => html`<table class="kv"><tbody>${ks.map(([k, t]) => { const v = av(xs, k); return html`<tr><td>${t}</td><td>${k === "chaseM" ? (v == null ? "–" : (v / 1000).toFixed(2) + " км") : dur(v)}</td></tr>`; })}</tbody></table>`;
   const free = COLLARS.length - usedCollars().size;
   const bar = (n, t) => html`<div class="bar"><i style=${`width:${Math.min(100, t ? n / t * 100 : 0)}%`}></i></div>`;
+  const fh = (k, t, cls) => html`<button class=${"rep-h" + (cls ? " " + cls : "")} onClick=${() => fold(k)}><span>${t}</span><span>${closed[k] ? "▸" : "▾"}</span></button>`;
+  const crow = y => { const m = metrics(y); const parts = [m.chase != null && `хөөлт ${fmtDur(m.chase)}${m.chaseM ? `, ${kmOf(m.chaseM)} км` : ""}`, m.induction != null && `эм үйлчилсэн ${fmtDur(m.induction)}`, m.vet != null && `эмч ${fmtDur(m.vet)}`, m.handling != null && `хүзүүвчилсэн ${fmtDur(m.handling)}`, m.standUp != null && `сэргэсэн ${fmtDur(m.standUp)}`, m.monitoring != null && `хяналт ${fmtDur(m.monitoring)}`].filter(Boolean);
+    return html`<button class="crow" onClick=${() => go("#/i/" + y.id)}><b>${label(y)}</b><div class="small">${[y.sex, y.age ? y.age + " нас" : "", fmtDT(startT(y))].filter(Boolean).join(" · ")}</div>${parts.length ? html`<div class="muted small">${parts.join(" · ")}</div>` : null}</button>`; };
   return html`<div class="card report">
-    <h3>✅ Амжилттай (${col.length})</h3>
+    ${fh("repS", `✅ Амжилттай (${col.length})`)}
+    ${!closed.repS && html`<div>
     <div class="stats"><div class="stat"><b>${col.length} / ${tF + tM}</b><span>Хүзүүвчилсэн</span>${bar(col.length, tF + tM)}</div><div class="stat"><b>${F} / ${tF}</b><span>Эм</span>${bar(F, tF)}</div><div class="stat"><b>${M} / ${tM}</b><span>Эр</span>${bar(M, tM)}</div></div>
     ${col.length - F - M > 0 ? html`<div class="hint">${col.length - F - M} бодгалийн хүйс бичигдээгүй</div>` : null}
-    ${col.length ? html`<h4>Байршлаар</h4><table class="kv"><tbody>${byLoc(col).map(([l, ys]) => html`<tr><td>${l}</td><td><b>${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span></td></tr>`)}</tbody></table>
+    ${col.length ? html`<h4>Байршлаар, хүзүүвчээр</h4>${byLoc(col).map(([l, ys]) => html`${fh("rl:" + l, html`📍 ${l} <b>— ${ys.length}</b> <span class="muted small">(эм ${ys.filter(x => x.sex === "Эм").length}, эр ${ys.filter(x => x.sex === "Эр").length})</span>`, "sub")}${!closed["rl:" + l] && [...ys].sort((a, b) => collarSeq(a) - collarSeq(b)).map(crow)}`)}
     <h4>Дундаж</h4>${avgRows(col, AVG_ALL)}` : html`<div class="muted small mt">Одоогоор хүзүүвчлээгүй</div>`}
-    <h3 class="mt">✕ Амжилтгүй, явагдаж буй (${bad.length})</h3>
-    ${bad.length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>
-    <h4>Дундаж</h4>${avgRows(bad, AVG_ALL.filter(([k]) => av(bad, k) != null))}` : html`<div class="muted small">Алга</div>`}
-    <h3 class="mt">Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}${collarHolders().map(y => html`<div class="muted small">${y.collarId} · ${S.surveys[y.surveyId].name} · №${y.no}${collared(y) ? "" : " (дуусаагүй)"}</div>`)}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
+    </div>`}
+    <div class="sep2"></div>
+    ${fh("repF", `✕ Амжилтгүй, явагдаж буй (${bad.length})`)}
+    ${!closed.repF && html`<div>${bad.length ? html`<table class="kv"><tbody>${Object.entries(fails).map(([k, n]) => html`<tr><td>${k}</td><td><b>${n}</b></td></tr>`)}</tbody></table>
+    <h4>Дундаж</h4>${avgRows(bad, AVG_ALL.filter(([k]) => av(bad, k) != null))}` : html`<div class="muted small">Алга</div>`}</div>`}
+    <div class="sep2"></div>
+    <h3>Нийт</h3><table class="kv"><tbody><tr><td>Хүзүүвч үлдсэн</td><td><b>${free}</b> / ${COLLARS.length}${collarHolders().map(y => html`<div class="muted small">${y.collarId} · ${S.surveys[y.surveyId].name} · №${y.no}${collared(y) ? "" : " (дуусаагүй)"}</div>`)}</td></tr><tr><td>Нийт бодгаль (оролдлого)</td><td>${list.length}</td></tr><tr><td>Амжилтын хувь</td><td>${list.length ? Math.round(col.length / list.length * 100) : 0}%</td></tr></tbody></table>
   </div>`;
 }
 function SurveyView({ id }) {
@@ -704,7 +711,7 @@ function SurveyView({ id }) {
       <tr><td>Бүртгэгч</td><td>${s.recorder}</td></tr></tbody></table></div>
     <div class="row wrap mt"><button class="btn ghost" onClick=${() => exportZip(id)}>📦 ZIP илгээх</button><button class="btn ghost" onClick=${() => exportSurvey(id)}>⬇ Excel</button><button class="btn ghost" onClick=${() => setQr(true)}>▦ QR үзүүлэх</button><button class="btn danger" onClick=${del}>Устгах</button></div>
     <p class="hint">ZIP: Excel + KMZ (хөөлтийн зам, буудсан, суллагдсан цэг) + бүх зураг. QR: энэ судалгааг өөр утас руу дамжуулна.</p>
-    ${list.length ? html`<button class="fold-h" onClick=${() => fold("rep")}><span>📊 Товч тайлан</span><span>${closed.rep ? "▸" : "▾"}</span></button>${!closed.rep && html`<${Report} list=${list} />`}` : null}
+    ${list.length ? html`<button class="fold-h" onClick=${() => fold("rep")}><span>📊 Товч тайлан</span><span>${closed.rep ? "▸" : "▾"}</span></button>${!closed.rep && html`<${Report} list=${list} closed=${closed} fold=${fold} />`}` : null}
     ${qr && html`<${QrShow} scope=${{ surveyId: id }} title=${"QR: " + s.name} onClose=${() => setQr(false)} />`}
     ${edit && html`<${SurveyModal} survey=${s} onClose=${() => setEdit(false)} />`}
   </div>`;
