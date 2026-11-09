@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.6.4";
+const APP_VERSION = "0.6.5";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -254,7 +254,7 @@ const st = (x, k) => x.steps[k] && !x.steps[k].skipped ? x.steps[k].t : null;
 const diff = (a, b) => a && b ? b - a : null;
 const avgKmh = m => m.chase && m.chaseM ? Math.round(m.chaseM / 1000 / (m.chase / 3600000)) : null;
 function metrics(x) {
-  const down = (x.side && (x.side.recumbent || x.side.down)) || null;
+  const sd = x.side || {}; const down = [sd.down, sd.recumbent].filter(o => o && o.t).sort((p, q) => p.t - q.t)[0] || null; // эм үйлчилсэн = буудсанаас анх унасан/хэвтсэн хүртэл
   const first = STEPS.map(s => st(x, s.k)).find(Boolean);
   return {
     chase: diff(st(x, "chaseStart"), st(x, "dart") || (x.chaseAborted && x.steps.chaseStop && x.steps.chaseStop.t)),
@@ -928,7 +928,7 @@ function Vitals({ x, group, title }) {
   const add = () => updInd(x.id, y => { y.vet = y.vet || {}; y.vet.vitals = [...(y.vet.vitals || []), { resp: "", hr: "", temp: "", mucous: "", stage: stageNow(), t: Date.now() }]; });
   const del = i => { if (confirm("Энэ үзүүлэлтийг устгах уу?")) updInd(x.id, y => { y.vet.vitals.splice(i, 1); }); };
   const row = (i, n) => { const a = i == null ? {} : all[i]; const hot = a.temp !== "" && a.temp != null && +a.temp >= 40;
-    return html`<div class="vit" key=${i == null ? "new" : a.t + "-" + i}>
+    return html`<div class="vit" key=${"r" + n}>
       <div class="row between"><span class="mini">${i == null ? "Шинэ" : `${n}. ${fmtHM(a.t).slice(0, 5)}`}</span>${i != null && html`<button class="iconbtn" style="height:30px" aria-label="Устгах" onClick=${() => del(i)}>✕</button>`}</div>
       <div class="grid3"><label><span class="mini">Амьсгал /мин</span><input class="inp" inputmode="numeric" placeholder="Амьсгал" value=${a.resp ?? ""} onInput=${e => set(i, "resp", e.target.value)} /></label>
         <label><span class="mini">Зүрх /мин</span><input class="inp" inputmode="numeric" placeholder="Зүрх" value=${a.hr ?? ""} onInput=${e => set(i, "hr", e.target.value)} /></label>
@@ -936,7 +936,7 @@ function Vitals({ x, group, title }) {
       ${hot && html`<div class="panel warn mt">⚠ Биеийн хэм 40 °C-ээс дээш байна. Малын эмчид мэдэгдэнэ.</div>`}
       <div class="mt"><${Chips} opts=${MUCOUS} val=${a.mucous} on=${val => set(i, "mucous", val)} /></div></div>`; };
   return html`<${Field} label=${title || "Амин үзүүлэлт (заавал биш, хэд ч нэмж болно)"}>
-      ${idx.length ? idx.map((i, n) => row(i, n + 1)) : row(null)}
+      ${(idx.length ? idx : [null]).map((i, n) => row(i, n + 1))}
       <button class="btn sec mt" onClick=${add}>+ Дахин хэмжилт нэмэх</button>
       <div class="hint">Бичмэгц хадгалагдана.</div><//>`;
 }
