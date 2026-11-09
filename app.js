@@ -2,7 +2,7 @@
    Суурь: BRCC Mongolia аппын offline хадгалалт, Google Sheets (Apps Script) илгээлт, дохио, Excel экспорт. */
 const { html, render, useState, useEffect, useRef, useMemo } = htmPreact;
 
-const APP_VERSION = "0.6.3";
+const APP_VERSION = "0.6.4";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const pad2 = n => String(n).padStart(2, "0");
 const fmtHM = ms => { if (!ms) return ""; const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
@@ -910,7 +910,7 @@ function TimerPanel({ title, from, limitMin }) {
 
 function SideButtons({ x, k }) {
   return html`<div class="row wrap mb">${SIDE[k].map(([sk, l]) => { const o = x.side && x.side[sk];
-    return html`<button class=${"btn " + (o ? "okb" : "ghost")} style="flex:1" onClick=${() => updInd(x.id, y => { y.side = y.side || {}; if (y.side[sk]) delete y.side[sk]; else y.side[sk] = { t: Date.now() }; })}>${l}${o ? " " + fmtHM(o.t).slice(0, 5) : ""}</button>`; })}</div>`;
+    return html`<button class=${"btn " + (o ? "okb" : "ghost")} style="flex:1" onClick=${() => { if (o) { if (!confirm(`${l} ${fmtHM(o.t)} цагийг хасах уу?`)) return; updInd(x.id, y => { delete y.side[sk]; }); return; } const t = Date.now(); updInd(x.id, y => { y.side = y.side || {}; y.side[sk] = { t }; }); showToast(`${l}: ${fmtHM(t)} бүртгэлээ`); }}>${o ? "✓ " : ""}${l}${o ? html`<span class="sub">${fmtHM(o.t)}</span>` : ""}</button>`; })}</div>`;
 }
 
 // Амин үзүүлэлт: эмчийн үзлэг, хүзүүвчлэх үед хоёуланд нь бичнэ (удирдамж 6.5: тасралтгүй хянана)
